@@ -21,9 +21,8 @@ pub const Severity = enum {
             .Info => Color.blue,
         };
 
-        try writer.print("{s}{s}{s}{s}{s}", .{
-            "\x1b[1m",
-
+        try writer.print("{s}{s}{s}{s}", .{
+            Color.bold,
             color,
             switch (self) {
                 .Error => "error",
@@ -31,7 +30,6 @@ pub const Severity = enum {
                 .Info => "info",
             },
             Color.reset,
-            "\x1b[0m",
         });
     }
 };
@@ -72,39 +70,7 @@ pub const Diagnostic = struct {
         try writer.print("{s}:{s}\n", .{ "stdin", self.labels.items[0].line_col(self.labels.items[0].start) });
 
         for (self.labels.items) |label| {
-            const line_col_start = label.line_col(label.start);
-            const line_col_end = label.line_col(label.end);
-            const line_start = findLineStart(label.file, label.start);
-            const line_end = findLineEnd(label.file, label.start);
-
-            // std.debug.print("line_col_start: {s}, line_col_end: {s}, line_start: {d}, line_end: {d}\n", .{
-            //     line_col_start,
-            //     line_col_end,
-            //     line_start,
-            //     line_end,
-            // });
-            //
-            try writer.print("{s}{s}{s}{s}{s}\n", .{
-                label.file[line_start .. line_col_start.col + line_start],
-                Color.red,
-                label.file[line_col_start.col + line_start .. line_col_end.col + line_start],
-                Color.reset,
-                label.file[line_col_end.col + line_start .. line_end],
-            });
-
-            for (0..line_col_start.col) |_| {
-                try writer.print(" ", .{});
-            }
-
-            try writer.print("{s}", .{Color.red});
-
-            for (0..label.end - label.start) |_| {
-                try writer.print("^", .{});
-            }
-
-            try writer.print(" {s}", .{label.message});
-
-            try writer.print("{s}\n", .{Color.reset});
+            try writer.print("{s}", .{label});
         }
     }
 };
@@ -168,5 +134,85 @@ pub const Label = struct {
         }
 
         return LineCol{ .line = line, .col = col };
+    }
+
+    pub fn primary(file: []const u8, start: usize, end: usize) Label {
+        return .{
+            .style = .Primary,
+            .file = file,
+            .start = start,
+            .end = end,
+            .message = "",
+        };
+    }
+
+    pub fn secondary(file: []const u8, start: usize, end: usize) Label {
+        return .{
+            .style = .Secondary,
+            .file = file,
+            .start = start,
+            .end = end,
+            .message = "",
+        };
+    }
+
+    pub fn withMessage(self: Label, message: []const u8) Label {
+        var copy = self;
+        copy.message = message;
+        return copy;
+    }
+
+    pub fn format(self: Label, comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
+        const line_col_start = self.line_col(self.start);
+        const line_col_end = self.line_col(self.end);
+        const line_start = findLineStart(self.file, self.start);
+        const line_end = findLineEnd(self.file, self.start);
+
+        const col = switch (self.style) {
+            .Primary => Color.red,
+            .Secondary => Color.reset,
+        };
+
+        var linePrefixBuf: [32]u8 = undefined;
+        const linePrefix = std.fmt.bufPrint(&linePrefixBuf, "{d} │ ", .{line_col_start.line}) catch |err| {
+            std.debug.panic("Failed to format line prefix: {s}", .{@errorName(err)});
+        };
+
+        try writer.print("{s}{s}{s}", .{
+            Color.blue,
+            linePrefix,
+            Color.reset,
+        });
+
+        const lineOffset = line_start;
+        try writer.print("{s}{s}{s}{s}{s}\n", .{
+            self.file[line_start .. line_col_start.col + lineOffset],
+            col,
+            self.file[line_col_start.col + lineOffset .. line_col_end.col + lineOffset],
+            Color.reset,
+            self.file[line_col_end.col + lineOffset .. line_end],
+        });
+
+        // NOTE: we do `-2` bc the `│` is 3 bytes wide. this is kind of a hack but it works for now.
+        for (0..linePrefix.len - 2) |_| try writer.print(" ", .{});
+        for (0..line_col_start.col) |_| try writer.print(" ", .{});
+
+        const c = switch (self.style) {
+            .Primary => "^",
+            .Secondary => "~",
+        };
+        const c_col = switch (self.style) {
+            .Primary => Color.red,
+            .Secondary => Color.blue,
+        };
+        try writer.print("{s}", .{c_col});
+
+        for (0..self.end - self.start) |_| {
+            try writer.print("{s}", .{c});
+        }
+
+        try writer.print(" {s}", .{self.message});
+
+        try writer.print("{s}\n", .{Color.reset});
     }
 };

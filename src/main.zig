@@ -1,6 +1,7 @@
 //! By convention, main.zig is where your main function lives in the case that
 const std = @import("std");
 const lib = @import("codespan_lib");
+const Label = lib.Label;
 
 pub fn main() !void {
     std.debug.print("All your {s} are belong to us.\n", .{"codebase"});
@@ -33,13 +34,16 @@ test "Diagnostic" {
     defer alloc.free(source);
 
     var d = (try lib.Diagnostic.new(.Error, alloc)).withMessage("Type mismatch");
-    d = try d.withLabel(lib.Label{
-        .style = .Primary,
-        .file = source,
-        .start = 20,
-        .end = 24,
-        .message = "Expected type `Int`, found `Bool`",
-    });
+    // d = try d.withLabel(Label{
+    //     .style = .Primary,
+    //     .file = source,
+    //     .start = 20,
+    //     .end = 24,
+    //     .message = "Expected type `Int`, found `Bool`",
+    // });
+
+    d = try d.withLabel(Label.primary(source, 17, 21).withMessage("Expected type `Int`, found `Bool`"));
+    d = try d.withLabel(Label.secondary(source, 42, 44).withMessage("This is the value of the variable"));
 
     defer alloc.destroy(d);
     defer d.labels.deinit();
