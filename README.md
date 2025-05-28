@@ -4,7 +4,7 @@ Beautiful diagnostic formatting in Zig, _heavily_ inspired by [codespan](https:/
 
 ## What it looks like
 This is the current output of the `zspan` example program. All of this based only on byte offsets!
-![Preview](./assets/zspan-preview.svg)
+![Preview](./assets/zspan-preview.png)
 
 ## What it do
 **zspan** is a diagnostic reporter for Zig that:
