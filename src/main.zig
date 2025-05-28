@@ -33,20 +33,23 @@ test "Diagnostic" {
     const source = try readFile(alloc, "text.md");
     defer alloc.free(source);
 
-    var d = (try lib.Diagnostic.new(.Error, alloc)).withMessage("Type mismatch");
-    // d = try d.withLabel(Label{
-    //     .style = .Primary,
-    //     .file = source,
-    //     .start = 20,
-    //     .end = 24,
-    //     .message = "Expected type `Int`, found `Bool`",
-    // });
-
-    d = try d.withLabel(Label.primary(source, 17, 21).withMessage("Expected type `Int`, found `Bool`"));
-    d = try d.withLabel(Label.secondary(source, 42, 44).withMessage("This is the value of the variable"));
+    var d = lib.Diagnostic.new(.Error, alloc)
+        .withMessage("Type mismatch")
+        .withLabels(
+            &[_]Label{
+                Label.primary(source, 14, 18).withMessage("Expected type `Int`, found `Bool`"),
+                Label.secondary(source, 35 + 100, 37 + 100).withMessage("This is the value of the variable"),
+            },
+        ).withNotes(
+        &[_][]const u8{
+            "This is a note about the error.",
+            "This is another note about the error.",
+        },
+    );
 
     defer alloc.destroy(d);
     defer d.labels.deinit();
+    defer d.notes.deinit();
 
     std.debug.print("{s}", .{d});
 }
