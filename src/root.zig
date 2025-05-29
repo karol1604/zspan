@@ -1,13 +1,11 @@
 const std = @import("std");
+const fileModule = @import("simple-file.zig");
+pub const SimpleFile = fileModule.SimpleFile;
+pub const SimpleFiles = fileModule.SimpleFiles;
+const utils = @import("utils.zig");
+const Color = utils.Color;
+const Config = @import("config.zig").Config;
 // const Colors = @import("colors.zig");
-
-const Color = struct {
-    pub const red = "\x1b[31m";
-    pub const yellow = "\x1b[33m";
-    pub const blue = "\x1b[34m";
-    pub const bold = "\x1b[1m";
-    pub const reset = "\x1b[0m";
-};
 
 pub const Severity = enum {
     Error,
@@ -44,17 +42,20 @@ pub const Diagnostic = struct {
     labels: std.ArrayList(Label),
     notes: std.ArrayList([]const u8),
     alloc: std.mem.Allocator,
+    config: Config, // TODO: move this to the renderer when we have one
 
     pub fn new(severity: Severity, alloc: std.mem.Allocator) *Diagnostic {
         const ptr = alloc.create(Diagnostic) catch {
             @panic("Failed to allocate Diagnostic");
         };
+
         ptr.* = .{
             .severity = severity,
             .message = "",
             .labels = std.ArrayList(Label).init(alloc),
             .notes = std.ArrayList([]const u8).init(alloc),
             .alloc = alloc,
+            .config = Config.default(), // Default to UTF-8 config
         };
 
         return ptr;
@@ -113,37 +114,53 @@ pub const Diagnostic = struct {
 
         for (0..maxLineNumLength) |_| try writer.print(" ", .{});
 
-        try writer.print("{s} ┌─ {s}", .{ Color.blue, Color.reset });
-        try writer.print("{s}:{s}\n", .{ "<stdin>", self.labels.items[0].line_col(self.labels.items[0].start) });
+        // try writer.print("{s} ┌─ {s}", .{ Color.blue, Color.reset });
+        try writer.print("{s} {s} {s}", .{ Color.blue, self.config.charset.headerStart, Color.reset });
+        try writer.print("{s}:{s}\n", .{ self.labels.items[0].file.name, self.labels.items[0].line_col(self.labels.items[0].start) });
 
         for (0..maxLineNumLength) |_| try writer.print(" ", .{});
 
-        try writer.print("{s} │\n{s}", .{ Color.blue, Color.reset });
+        // try writer.print("{s} │\n{s}", .{ Color.blue, Color.reset });
+        try writer.print("{s} {s}\n{s}", .{ Color.blue, self.config.charset.border, Color.reset });
 
+        var lastLineNum: usize = undefined;
         for (self.labels.items) |label| {
             const line = label.line_col(label.start).line;
 
-            for (0..maxLineNumLength - getDigitsLength(line)) |_| try writer.print(" ", .{});
+            if (line != lastLineNum) {
+                for (0..maxLineNumLength - getDigitsLength(line)) |_| try writer.print(" ", .{});
 
-            try writer.print("{s}{d} │ {s}", .{
-                Color.blue,
-                line,
-                Color.reset,
-            });
+                // try writer.print("{s}{d} │ {s}", .{
+                //     Color.blue,
+                //     line,
+                //     Color.reset,
+                // });
+                try writer.print("{s}{d} {s} {s}", .{
+                    Color.blue,
+                    line,
+                    self.config.charset.border,
+                    Color.reset,
+                });
+            }
 
             var buffer: [256]u8 = undefined;
 
             const offset = maxLineNumLength + 1; // lineDigits + " "
-            try writer.print("{s}", .{try label.toString(&buffer, offset)});
+            try writer.print("{s}", .{try label.toString(&buffer, offset, line == lastLineNum, self.config)});
+            lastLineNum = line;
         }
 
         for (0..maxLineNumLength) |_| try writer.print(" ", .{});
 
-        try writer.print("{s} │ \n", .{Color.blue});
+        // try writer.print("{s} │ \n", .{Color.blue});
+        try writer.print("{s} {s} \n", .{ Color.blue, self.config.charset.border });
         for (self.notes.items) |note| {
             for (0..self.getMaxLineNumberLength() + 1) |_| try writer.print(" ", .{});
-            try writer.print("{s}= {s}{s}\n", .{ Color.blue, Color.reset, note });
+            // try writer.print("{s}= {s}{s}\n", .{ Color.blue, Color.reset, note });
+            try writer.print("{s}{s} {s}{s}\n", .{ Color.blue, self.config.charset.noteMarker, Color.reset, note });
         }
+
+        try writer.print("{s}", .{Color.reset});
     }
 };
 
@@ -184,14 +201,14 @@ pub const Label = struct {
     start: usize,
     end: usize,
     message: []const u8,
-    file: []const u8,
+    file: *const SimpleFile,
 
     pub fn line_col(self: *const Label, idx: usize) LineCol {
         var line: usize = 1;
         var col: usize = 1;
         var pos: usize = 1;
 
-        for (self.file) |b| {
+        for (self.file.*.source) |b| {
             if (pos >= idx) break;
             switch (b) {
                 '\n' => {
@@ -208,7 +225,7 @@ pub const Label = struct {
         return LineCol{ .line = line, .col = col };
     }
 
-    pub fn primary(file: []const u8, start: usize, end: usize) Label {
+    pub fn primary(file: *const SimpleFile, start: usize, end: usize) Label {
         return .{
             .style = .Primary,
             .file = file,
@@ -218,7 +235,7 @@ pub const Label = struct {
         };
     }
 
-    pub fn secondary(file: []const u8, start: usize, end: usize) Label {
+    pub fn secondary(file: *const SimpleFile, start: usize, end: usize) Label {
         return .{
             .style = .Secondary,
             .file = file,
@@ -237,8 +254,11 @@ pub const Label = struct {
     pub fn format(self: Label, comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
         const line_col_start = self.line_col(self.start);
         const line_col_end = self.line_col(self.end);
-        const line_start = findLineStart(self.file, self.start);
-        const line_end = findLineEnd(self.file, self.start);
+        // const line_start = findLineStart(self.file.*.source, self.start);
+        const line_start = self.file.*.lineStart(self.start) catch |err| {
+            std.debug.panic("Failed to get line start: {s}", .{@errorName(err)});
+        };
+        const line_end = findLineEnd(self.file.*.source, self.start);
 
         const col = switch (self.style) {
             .Primary => Color.red,
@@ -247,11 +267,11 @@ pub const Label = struct {
 
         const lineOffset = line_start;
         try writer.print("{s}{s}{s}{s}{s}\n", .{
-            self.file[line_start .. line_col_start.col + lineOffset],
+            self.file.*.source[line_start .. line_col_start.col + lineOffset],
             col,
-            self.file[line_col_start.col + lineOffset .. line_col_end.col + lineOffset],
+            self.file.*.source[line_col_start.col + lineOffset .. line_col_end.col + lineOffset],
             Color.reset,
-            self.file[line_col_end.col + lineOffset .. line_end],
+            self.file.*.source[line_col_end.col + lineOffset .. line_end],
         });
 
         // for (0..line_col_start.col) |_| try writer.print(" ", .{});
@@ -273,16 +293,17 @@ pub const Label = struct {
         // try writer.print("{s}\n", .{Color.reset});
     }
 
-    pub fn toString(self: Label, buf: []u8, labelOffset: usize) ![]const u8 {
+    pub fn toString(self: Label, buf: []u8, labelOffset: usize, sameLastLine: bool, config: Config) ![]const u8 {
         var stream = std.io.fixedBufferStream(buf);
         const writer = stream.writer();
 
         const line_col_start = self.line_col(self.start);
 
-        try writer.print("{s}", .{self}); // this prints the code line
+        if (!sameLastLine) try writer.print("{s}", .{self}); // this prints the code line
 
         for (0..labelOffset) |_| try writer.print(" ", .{});
-        try writer.print("{s}│{s}", .{ Color.blue, Color.reset });
+        // try writer.print("{s}│{s}", .{ Color.blue, Color.reset });
+        try writer.print("{s}{s}{s}", .{ Color.blue, config.charset.border, Color.reset });
 
         // NOTE: we do `+1` to account for the `│` char
         for (0..line_col_start.col + 1) |_| try writer.print(" ", .{});

@@ -1,8 +1,11 @@
 //! By convention, main.zig is where your main function lives in the case that
 const std = @import("std");
+
 const lib = @import("codespan_lib");
 const Label = lib.Label;
+const SimpleFiles = lib.SimpleFiles;
 
+// const file_ = @import("simple-file.zig");
 pub fn main() !void {
     std.debug.print("All your {s} are belong to us.\n", .{"codebase"});
 
@@ -29,27 +32,36 @@ pub fn readFile(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
 }
 
 test "Diagnostic" {
-    const alloc = std.testing.allocator;
-    const source = try readFile(alloc, "text.md");
-    defer alloc.free(source);
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    const alloc = arena.allocator();
+    // const source = try readFile(alloc, "text.md");
+    defer arena.deinit();
 
-    var d = lib.Diagnostic.new(.Error, alloc)
+    var test_files = (try SimpleFiles.init(alloc));
+    try test_files.addFile("text.md", try readFile(alloc, "text.md"));
+
+    const d = lib.Diagnostic.new(.Error, alloc)
         .withMessage("Type mismatch")
         .withLabels(
             &[_]Label{
-                Label.primary(source, 14, 18).withMessage("Expected type `Int`, found `Bool`"),
-                Label.secondary(source, 35 + 100, 37 + 100).withMessage("This is the value of the variable"),
+                Label.primary(&test_files.files.items[0], 14, 18).withMessage("Expected type `Int`, found `Bool`"),
+                // Label.secondary(source, 14, 18).withMessage("Expected type `Int`, found `Bool`"),
+                Label.secondary(&test_files.files.items[0], 35 + 100, 37 + 100).withMessage("This is the value of the variable"),
             },
-        ).withNotes(
+        )
+        .withNotes(
         &[_][]const u8{
             "This is a note about the error.",
             "This is another note about the error.",
         },
     );
 
-    defer alloc.destroy(d);
-    defer d.labels.deinit();
-    defer d.notes.deinit();
+    // defer alloc.destroy(d);
+    // defer d.labels.deinit();
+    // defer d.notes.deinit();
 
     std.debug.print("{s}", .{d});
+
+    // NOTE: api should be like this:
+    // renderer.renderDiagnostic(writer, &files, &diagnostic);
 }
