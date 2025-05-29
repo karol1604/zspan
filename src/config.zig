@@ -1,11 +1,15 @@
+const std = @import("std");
+
 pub const Config = struct {
     displayMode: DisplayMode,
     charset: Charset,
+    colorMode: std.io.tty.Config,
 
     pub fn default() Config {
         return .{
             .displayMode = .Verbose,
             .charset = Charset.ascii(),
+            .colorMode = .escape_codes,
         };
     }
 };

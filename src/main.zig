@@ -4,6 +4,8 @@ const std = @import("std");
 const lib = @import("codespan_lib");
 const Label = lib.Label;
 const SimpleFiles = lib.SimpleFiles;
+const Renderer = lib.Renderer;
+const Config = lib.Config;
 
 // const file_ = @import("simple-file.zig");
 pub fn main() !void {
@@ -45,7 +47,7 @@ test "Diagnostic" {
         .withLabels(
             &[_]Label{
                 Label.primary(&test_files.files.items[0], 14, 18).withMessage("Expected type `Int`, found `Bool`"),
-                // Label.secondary(source, 14, 18).withMessage("Expected type `Int`, found `Bool`"),
+                Label.secondary(&test_files.files.items[0], 14, 18).withMessage("Expected type `Int`, found `Bool`"),
                 Label.secondary(&test_files.files.items[0], 35 + 100, 37 + 100).withMessage("This is the value of the variable"),
             },
         )
@@ -60,7 +62,14 @@ test "Diagnostic" {
     // defer d.labels.deinit();
     // defer d.notes.deinit();
 
+    var writer = std.io.getStdErr().writer().any();
+    // try std.io.tty.Config.setColor(.escape_codes, writer, .dim);
+    try writer.print("Diagnostic:\n", .{});
+
     std.debug.print("{s}", .{d});
+
+    const r = Renderer.init(writer, Config.default());
+    try r.renderMainMessage(d.severity, d.message);
 
     // NOTE: api should be like this:
     // renderer.renderDiagnostic(writer, &files, &diagnostic);

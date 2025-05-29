@@ -2,9 +2,12 @@ const std = @import("std");
 const fileModule = @import("simple-file.zig");
 pub const SimpleFile = fileModule.SimpleFile;
 pub const SimpleFiles = fileModule.SimpleFiles;
+pub const Renderer = @import("renderer.zig").Renderer;
+pub const Config = @import("config.zig").Config;
+
 const utils = @import("utils.zig");
 const Color = utils.Color;
-const Config = @import("config.zig").Config;
+
 // const Colors = @import("colors.zig");
 
 pub const Severity = enum {
