@@ -1,6 +1,10 @@
 const std = @import("std");
 const Config = @import("config.zig").Config;
-const Severity = @import("root.zig").Severity;
+const Severity = @import("diagnostic.zig").Severity;
+const Diagnostic = @import("diagnostic.zig").Diagnostic;
+const SourceFiles = @import("source-file.zig").SourceFiles;
+const SourceFile = @import("source-file.zig").SourceFile;
+const LineCol = @import("diagnostic.zig").LineCol;
 
 pub const Renderer = struct {
     config: Config,
@@ -23,25 +27,47 @@ pub const Renderer = struct {
         try std.io.tty.Config.setColor(self.config.colorMode, self.writer, .reset);
     }
 
-    pub fn renderMainMessage(self: *const Renderer, severity: Severity, message: []const u8) !void {
-        try self.setColor(.bold);
-        switch (severity) {
-            .Error => {
-                try self.setColor(.red);
-                try self.writer.print("error", .{});
-            },
-            .Warning => {
-                try self.setColor(.yellow);
-                try self.writer.print("warning", .{});
-            },
-            .Info => {
-                try self.setColor(.cyan);
-                try self.writer.print("info", .{});
-            },
+    pub fn renderMinimalDiagnostic(self: *const Renderer, diagnostic: *const Diagnostic, sourceFiles: *const SourceFiles) !void {
+        for (diagnostic.labels.items) |label| {
+            try self.renderMainMessage(
+                true,
+                diagnostic.severity,
+                diagnostic.message,
+                try sourceFiles.name(label.fileId),
+                try sourceFiles.location(label.fileId, label.start),
+            );
+        }
+    }
+
+    pub fn renderVerboseDiagnostic(self: *const Renderer, diagnostic: *const Diagnostic, sourceFiles: *const SourceFiles) !void {
+        try self.renderMainMessage(
+            false,
+            diagnostic.severity,
+            diagnostic.message,
+            try sourceFiles.name(diagnostic.labels.items[0].fileId),
+            try sourceFiles.location(diagnostic.labels.items[0].fileId, diagnostic.labels.items[0].start),
+        );
+    }
+
+    fn renderMainMessage(self: *const Renderer, renderFileLoc: bool, severity: Severity, message: []const u8, fileName: []const u8, startLoc: LineCol) !void {
+        if (renderFileLoc) {
+            try self.renderFileLocation(fileName, startLoc);
+            try self.writer.print(": ", .{});
         }
 
+        try self.setColor(.bold);
+        try self.setColor(self.config.colors.header(severity));
+        switch (severity) {
+            .Error => try self.writer.print("error", .{}),
+            .Warning => try self.writer.print("warning", .{}),
+            .Info => try self.writer.print("info", .{}),
+        }
         try self.resetColor();
 
-        try self.writer.print(": {s}", .{message});
+        try self.writer.print(": {s}\n", .{message});
+    }
+
+    fn renderFileLocation(self: *const Renderer, fileName: []const u8, startLoc: LineCol) !void {
+        try self.writer.print("{s}:{s}", .{ fileName, startLoc });
     }
 };

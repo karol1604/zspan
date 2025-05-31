@@ -1,11 +1,11 @@
 //! By convention, main.zig is where your main function lives in the case that
 const std = @import("std");
 
-const lib = @import("codespan_lib");
-const Label = lib.Label;
-const SimpleFiles = lib.SimpleFiles;
-const Renderer = lib.Renderer;
-const Config = lib.Config;
+const zspan = @import("zspan_lib");
+const Label = zspan.Label;
+const SourceFiles = zspan.SourceFiles;
+const Renderer = zspan.Renderer;
+const Config = zspan.Config;
 
 // const file_ = @import("simple-file.zig");
 pub fn main() !void {
@@ -39,16 +39,16 @@ test "Diagnostic" {
     // const source = try readFile(alloc, "text.md");
     defer arena.deinit();
 
-    var test_files = (try SimpleFiles.init(alloc));
-    try test_files.addFile("text.md", try readFile(alloc, "text.md"));
+    var test_files = (try SourceFiles.init(alloc));
+    const fileId = try test_files.addFile("test.ei", try readFile(alloc, "test.ei"));
 
-    const d = lib.Diagnostic.new(.Error, alloc)
+    const d = zspan.Diagnostic.new(.Error, alloc)
         .withMessage("Type mismatch")
         .withLabels(
             &[_]Label{
-                Label.primary(&test_files.files.items[0], 14, 18).withMessage("Expected type `Int`, found `Bool`"),
-                Label.secondary(&test_files.files.items[0], 14, 18).withMessage("Expected type `Int`, found `Bool`"),
-                Label.secondary(&test_files.files.items[0], 35 + 100, 37 + 100).withMessage("This is the value of the variable"),
+                Label.primary(fileId, &test_files.files.items[0], 14, 18).withMessage("Expected type `Int`, found `Bool`"),
+                Label.secondary(fileId, &test_files.files.items[0], 14, 18).withMessage("Expected type `Int`, found `Bool`"),
+                Label.secondary(fileId, &test_files.files.items[0], 35 + 100, 37 + 100).withMessage("This is the value of the variable"),
             },
         )
         .withNotes(
@@ -68,8 +68,14 @@ test "Diagnostic" {
 
     std.debug.print("{s}", .{d});
 
-    const r = Renderer.init(writer, Config.default());
-    try r.renderMainMessage(d.severity, d.message);
+    std.debug.print("\n------------------------------\n\n", .{});
+
+    zspan.displayDiagnostic(d, &test_files, Config.default(), writer) catch |err| {
+        std.debug.print("Error displaying diagnostic: {s}\n", .{@errorName(err)});
+    };
+
+    // const r = Renderer.init(writer, Config.default());
+    // try r.renderMainMessage(d.severity, d.message);
 
     // NOTE: api should be like this:
     // renderer.renderDiagnostic(writer, &files, &diagnostic);
