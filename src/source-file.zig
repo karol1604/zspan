@@ -1,6 +1,6 @@
 const std = @import("std");
 const utils = @import("utils.zig");
-const LineCol = @import("diagnostic.zig").LineCol;
+const LineCol = @import("utils.zig").LineCol;
 
 fn getLineStarts(source: []const u8, alloc: std.mem.Allocator) []const usize {
     var lineStarts: std.ArrayList(usize) = std.ArrayList(usize).init(alloc);
@@ -83,8 +83,15 @@ pub const SourceFiles = struct {
         return error.FileIdOutOfRange;
     }
 
-    pub fn addFile(self: *SourceFiles, name_: []const u8, source: []const u8) !usize {
-        try self.files.append(SourceFile.init(name_, source, self.alloc));
+    pub fn source(self: *const SourceFiles, fileId: usize) ![]const u8 {
+        if (fileId < self.files.items.len) {
+            return self.files.items[fileId].source;
+        }
+        return error.FileIdOutOfRange;
+    }
+
+    pub fn addFile(self: *SourceFiles, name_: []const u8, source_: []const u8) !usize {
+        try self.files.append(SourceFile.init(name_, source_, self.alloc));
         return self.files.items.len - 1;
     }
 

@@ -4,6 +4,8 @@ pub const SourceFile = fileModule.SourceFile;
 pub const SourceFiles = fileModule.SourceFiles;
 pub const Renderer = @import("renderer.zig").Renderer;
 pub const Config = @import("config.zig").Config;
+const LineCol = @import("utils.zig").LineCol;
+const getDigitsLength = @import("utils.zig").getDigitsLength;
 
 const utils = @import("utils.zig");
 const Color = utils.Color;
@@ -34,10 +36,6 @@ pub const Severity = enum {
         });
     }
 };
-
-fn getDigitsLength(n: usize) usize {
-    return std.math.log10_int(n) + 1;
-}
 
 pub const Diagnostic = struct {
     severity: Severity,
@@ -176,15 +174,6 @@ fn findLineEnd(source: []const u8, start: usize) usize {
     }
     return source.len;
 }
-
-pub const LineCol = struct {
-    line: usize,
-    col: usize,
-
-    pub fn format(self: LineCol, comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
-        try writer.print("{d}:{d}", .{ self.line, self.col });
-    }
-};
 
 pub const Label = struct {
     style: enum {
