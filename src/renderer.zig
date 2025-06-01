@@ -50,28 +50,33 @@ pub const Renderer = struct {
         var padding: usize = 0;
 
         for (diagnostic.labels.items) |label| {
-            padding = @max(padding, getDigitsLength((try sourceFiles.location(label.fileId, label.start)).line));
+            const digitLength = getDigitsLength((try sourceFiles.location(label.fileId, label.start)).line);
+            padding = @max(padding, digitLength);
         }
 
         try self.renderFileStart(
             try sourceFiles.name(diagnostic.labels.items[0].fileId),
             try sourceFiles.location(diagnostic.labels.items[0].fileId, diagnostic.labels.items[0].start),
-            padding,
+            padding + 1,
         );
-    }
 
-    // fn getMaxLineNumberLength(self: *const Diagnostic) usize {
-    //     var max_length: usize = 0;
-    //     for (self.labels.items) |label| {
-    //         const line = label.line_col(label.start).line;
-    //         const lineLength = getDigitsLength(line);
-    //
-    //         if (lineLength > max_length) {
-    //             max_length = lineLength;
-    //         }
-    //     }
-    //     return max_length;
-    // }
+        for (diagnostic.labels.items) |label| {
+            try self.renderLineNumber((try sourceFiles.location(label.fileId, label.start)).line, padding);
+            try self.setColor(self.config.colors.border);
+            try self.writer.print("{s}\n", .{self.config.charset.border});
+            try self.resetColor();
+        }
+
+        try self.renderEmptyBorderLine(padding + 1);
+
+        for (diagnostic.notes.items) |note| {
+            try self.renderPadding(padding + 1);
+            try self.setColor(self.config.colors.noteMarker);
+            try self.writer.print("{s} ", .{self.config.charset.noteMarker});
+            try self.resetColor();
+            try self.writer.print("{s}\n", .{note});
+        }
+    }
 
     fn renderMainMessage(
         self: *const Renderer,
@@ -119,8 +124,20 @@ pub const Renderer = struct {
         try self.writer.print("\n", .{});
     }
 
+    fn renderLineNumber(self: *const Renderer, line: usize, padding: usize) !void {
+        const iPadding: isize = @intCast(padding);
+        const lineDigitLen: isize = @intCast(getDigitsLength(line));
+        const t: isize = iPadding - lineDigitLen;
+
+        try self.renderPadding(@max(0, t));
+        try self.setColor(self.config.colors.lineNumber);
+        try self.writer.print("{d}", .{line});
+        try self.resetColor();
+        try self.writer.print(" ", .{});
+    }
+
     fn renderPadding(self: *const Renderer, padding: usize) !void {
-        for (0..padding + 1) |_| try self.writer.print(" ", .{});
+        for (0..padding) |_| try self.writer.print(" ", .{});
     }
 
     fn renderFileLocation(self: *const Renderer, fileName: []const u8, startLoc: LineCol) !void {

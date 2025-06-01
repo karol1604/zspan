@@ -51,7 +51,7 @@ const ColorSet = struct {
 
             .border = .blue,
             .noteMarker = .blue,
-            .lineNumber = .dim,
+            .lineNumber = .blue,
         };
     }
 

@@ -18,5 +18,5 @@ This project is WAY harder than i anticipated. it is currently in a very early s
 I'm building this project mainly for myself and learning purposes so please don't scream at me for the bad code. This thing can do some basic stuff but i still need to add like multiline spans, proper file handling, proper rendering, handle uft-8 and so on.
 
 ## Todo
-- [ ] create a file abstraction to handle multiple files (cache byte offsets, etc.)
 - [ ] create a `Renderer` to separate the logic from diagnostics
+- [ ] group labels by file

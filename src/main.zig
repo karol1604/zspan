@@ -48,7 +48,7 @@ test "Diagnostic" {
             &[_]Label{
                 Label.primary(fileId, &test_files.files.items[0], 14, 18).withMessage("Expected type `Int`, found `Bool`"),
                 Label.secondary(fileId, &test_files.files.items[0], 14, 18).withMessage("Expected type `Int`, found `Bool`"),
-                // Label.secondary(fileId, &test_files.files.items[0], 35 + 100, 37 + 100).withMessage("This is the value of the variable"),
+                Label.secondary(fileId, &test_files.files.items[0], 35 + 100, 37 + 100).withMessage("This is the value of the variable"),
             },
         )
         .withNotes(
