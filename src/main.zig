@@ -41,14 +41,16 @@ test "Diagnostic" {
 
     var test_files = (try SourceFiles.init(alloc));
     const fileId = try test_files.addFile("test.ei", try readFile(alloc, "test.ei"));
+    const fileId2 = try test_files.addFile("other.ei", try readFile(alloc, "other.ei"));
 
     const d = zspan.Diagnostic.new(.Error, alloc)
         .withMessage("Type mismatch")
         .withLabels(
             &[_]Label{
-                Label.primary(fileId, &test_files.files.items[0], 14, 18).withMessage("Expected type `Int`, found `Bool`"),
-                Label.secondary(fileId, &test_files.files.items[0], 14, 18).withMessage("Expected type `Int`, found `Bool`"),
                 Label.secondary(fileId, &test_files.files.items[0], 35 + 100, 37 + 100).withMessage("This is the value of the variable"),
+                Label.primary(fileId2, &test_files.files.items[1], 1 + 3, 10 + 3).withMessage("Expected type `Int`, found `Bool`"),
+                Label.primary(fileId, &test_files.files.items[0], 14, 18).withMessage("Expected type `Int`, found `Bool`"),
+                // Label.secondary(fileId, &test_files.files.items[0], 14, 18).withMessage("Expected type `Int`, found `Bool`"),
             },
         )
         .withNotes(

@@ -70,12 +70,15 @@ const Charset = struct {
     noteMarker: []const u8,
     primaryUnderline: []const u8,
     secondaryUnderline: []const u8,
+    borderBreak: []const u8,
     // ... and other fields
 
     pub fn utf8() Charset {
         return .{
             .headerStart = "┌─",
             .border = "│",
+            // .noteMarker = "•",
+            .borderBreak = "•",
             .noteMarker = "=",
             .primaryUnderline = "^",
             .secondaryUnderline = "~",
@@ -86,6 +89,7 @@ const Charset = struct {
         return .{
             .headerStart = "-->",
             .border = "|",
+            .borderBreak = ".",
             .noteMarker = "=",
             .primaryUnderline = "^",
             .secondaryUnderline = "~",

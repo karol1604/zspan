@@ -154,7 +154,7 @@ pub const Diagnostic = struct {
         for (0..maxLineNumLength) |_| try writer.print(" ", .{});
 
         // try writer.print("{s} │ \n", .{Color.blue});
-        try writer.print("{s} {s} \n", .{ Color.blue, self.config.charset.border });
+        if (self.notes.items.len > 0) try writer.print("{s} {s} \n", .{ Color.blue, self.config.charset.border });
         for (self.notes.items) |note| {
             for (0..self.getMaxLineNumberLength() + 1) |_| try writer.print(" ", .{});
             // try writer.print("{s}= {s}{s}\n", .{ Color.blue, Color.reset, note });

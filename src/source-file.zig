@@ -1,6 +1,7 @@
 const std = @import("std");
 const utils = @import("utils.zig");
 const LineCol = @import("utils.zig").LineCol;
+const Range = @import("utils.zig").Range;
 
 fn getLineStarts(source: []const u8, alloc: std.mem.Allocator) []const usize {
     var lineStarts: std.ArrayList(usize) = std.ArrayList(usize).init(alloc);
@@ -49,6 +50,15 @@ pub const SourceFile = struct {
 
         return error.LineIndexOutOfRange;
     }
+
+    // TODO: this is ugly
+    fn lineRange(self: *const SourceFile, byteOffset: usize) !Range {
+        const start = try self.lineStart(byteOffset);
+        const lineIdx = self.lineIndex(byteOffset);
+        const nextLineStart = if (lineIdx + 1 < self.lineStarts.len) self.lineStarts[lineIdx + 1] else self.source.len;
+        const end = nextLineStart - 1;
+        return Range{ .start = start, .end = end };
+    }
 };
 
 pub const SourceFiles = struct {
@@ -67,13 +77,27 @@ pub const SourceFiles = struct {
 
         const file = &self.files.items[fileId];
         const lineStart = try file.lineStart(byteOffset);
-        const lineIndex = file.lineIndex(byteOffset);
+        const lineIdx = file.lineIndex(byteOffset);
         const column = byteOffset - lineStart;
 
         return .{
-            .line = lineIndex + 1, // Lines are 1-indexed
+            .line = lineIdx + 1, // Lines are 1-indexed
             .col = column + 1, // Columns are 1-indexed
         };
+    }
+
+    pub fn lineIndex(self: *const SourceFiles, fileId: usize, byteOffset: usize) !usize {
+        if (fileId < self.files.items.len) {
+            return self.files.items[fileId].lineIndex(byteOffset);
+        }
+        return error.FileIdOutOfRange;
+    }
+
+    pub fn lineRange(self: *const SourceFiles, fileId: usize, byteOffset: usize) !Range {
+        if (fileId < self.files.items.len) {
+            return self.files.items[fileId].lineRange(byteOffset);
+        }
+        return error.FileIdOutOfRange;
     }
 
     pub fn name(self: *const SourceFiles, fileId: usize) ![]const u8 {
