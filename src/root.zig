@@ -5,7 +5,12 @@ pub const Diagnostic = @import("diagnostic.zig").Diagnostic;
 pub const Label = @import("diagnostic.zig").Label;
 pub const Config = @import("config.zig").Config;
 
-pub fn displayDiagnostic(diagnostic: Diagnostic, sources: []const SourceFile, writer: *std.io.Writer) !void {
+pub fn displayDiagnostic(
+    diagnostic: Diagnostic,
+    sources: []const SourceFile,
+    writer: *std.io.Writer,
+    alloc: std.mem.Allocator,
+) !void {
     var renderer = Renderer.init(Config.default(), writer);
-    try renderer.renderDiagnostic(diagnostic, sources);
+    try renderer.renderDiagnostic(diagnostic, sources, alloc);
 }

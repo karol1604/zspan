@@ -1,7 +1,9 @@
 const std = @import("std");
+
+const config = @import("config.zig");
 const sourcefile = @import("sourcefile.zig");
 const SourceFile = sourcefile.SourceFile;
-const config = @import("config.zig");
+const utils = @import("utils.zig");
 
 pub const Severity = enum {
     Error,
@@ -38,6 +40,12 @@ pub const Label = struct {
             .fileId = fileId,
         };
     }
+};
+
+pub const LabeledLine = struct {
+    number: usize, // 1-indexed
+    range: utils.Range, // byte range
+    labels: []const Label,
 };
 
 pub const Diagnostic = struct {

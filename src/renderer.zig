@@ -1,12 +1,104 @@
 const std = @import("std");
+
 const Config = @import("config.zig").Config;
 const Diagnostic = @import("diagnostic.zig").Diagnostic;
-const SourceFile = @import("sourcefile.zig").SourceFile;
-const LineCol = @import("utils.zig").LineCol;
 const Label = @import("diagnostic.zig").Label;
+const LineCol = @import("utils.zig").LineCol;
+const SourceFile = @import("sourcefile.zig").SourceFile;
 const utils = @import("utils.zig");
 
-const BOLD = "\x1b[1m";
+const LabeledLine = struct {
+    number: usize, // 1-indexed
+    range: utils.Range, // byte range
+    labels: []const Label, // labels that apply to this line
+};
+
+const LabeledFile = struct {
+    fileId: usize,
+    lines: []LabeledLine, // lines should be sorted by line number
+};
+
+const LabeledLineBuilder = struct {
+    number: usize,
+    range: utils.Range,
+    labels: std.ArrayList(Label),
+};
+
+const LabeledFileBuilder = struct {
+    file_id: usize,
+    lines: std.ArrayList(LabeledLineBuilder),
+};
+
+fn findOrCreateLabeledFile(
+    files: *std.ArrayList(LabeledFileBuilder),
+    file_id: usize,
+    alloc: std.mem.Allocator,
+) !*LabeledFileBuilder {
+    for (files.items) |*file| {
+        if (file.file_id == file_id) return file;
+    }
+    try files.append(alloc, .{
+        .file_id = file_id,
+        .lines = .empty,
+    });
+    return &files.items[files.items.len - 1];
+}
+
+fn findOrCreateLabeledLine(
+    lines: *std.ArrayList(LabeledLineBuilder),
+    number: usize,
+    range: utils.Range,
+    alloc: std.mem.Allocator,
+) !*LabeledLineBuilder {
+    for (lines.items) |*line| {
+        if (line.number == number) return line;
+    }
+    try lines.append(alloc, .{
+        .number = number,
+        .range = range,
+        .labels = .empty,
+    });
+    return &lines.items[lines.items.len - 1];
+}
+
+fn buildLabeledFiles(labels: []const Label, sources: []const SourceFile, alloc: std.mem.Allocator) ![]LabeledFile {
+    var fileBuilders: std.ArrayList(LabeledFileBuilder) = .empty;
+
+    for (labels) |label| {
+        const source = sources[label.fileId];
+        const lineNumber = (try source.lineCol(label.start)).line;
+        const lineRange = try source.lineRange(label.start);
+
+        const fileBuilder = try findOrCreateLabeledFile(&fileBuilders, label.fileId, alloc);
+        const lineBuilder = try findOrCreateLabeledLine(&fileBuilder.lines, lineNumber, lineRange, alloc);
+        try lineBuilder.labels.append(alloc, label);
+    }
+
+    var files: std.ArrayList(LabeledFile) = .empty;
+    for (fileBuilders.items) |*fileBuilder| {
+        std.sort.block(LabeledLineBuilder, fileBuilder.lines.items, {}, compareLabeledLines);
+
+        var lines: std.ArrayList(LabeledLine) = .empty;
+        for (fileBuilder.lines.items) |*lineBuilder| {
+            try lines.append(alloc, .{
+                .number = lineBuilder.number,
+                .range = lineBuilder.range,
+                .labels = try lineBuilder.labels.toOwnedSlice(alloc),
+            });
+        }
+
+        try files.append(alloc, .{
+            .fileId = fileBuilder.file_id,
+            .lines = try lines.toOwnedSlice(alloc),
+        });
+    }
+
+    return try files.toOwnedSlice(alloc);
+}
+
+fn compareLabeledLines(_: void, a: LabeledLineBuilder, b: LabeledLineBuilder) bool {
+    return a.number < b.number;
+}
 
 pub const Renderer = struct {
     config: Config,
@@ -19,49 +111,89 @@ pub const Renderer = struct {
         };
     }
 
-    pub fn renderDiagnostic(self: *Renderer, diagnostic: Diagnostic, sourceFiles: []const SourceFile) !void {
-        const sourceFile = sourceFiles[diagnostic.labels[0].fileId]; // FIXME: temporary single file assumption
+    pub fn renderDiagnostic(
+        self: *Renderer,
+        diagnostic: Diagnostic,
+        sourceFiles: []const SourceFile,
+        alloc: std.mem.Allocator,
+    ) !void {
+        const labeledFiles = try buildLabeledFiles(diagnostic.labels, sourceFiles, alloc);
+        const padding = utils.digitCount(findLargestLineNumber(labeledFiles)) + 1; // +1 for the space after the line number
 
-        try self.renderMainMessage(diagnostic);
+        for (labeledFiles) |labeledFile| {
+            const source = sourceFiles[labeledFile.fileId];
+            const firstLine = labeledFile.lines[0];
+            const firstLabel = firstLine.labels[0];
+            const firstLineCol = try source.lineCol(firstLabel.start);
 
-        const padding = utils.digitCount(findLargestLineNumber(diagnostic.labels, sourceFiles)) + 1; // +1 for the space after the line number
+            try self.renderFileHeader(source.name, firstLineCol, padding);
+            try self.renderEmptyBorderLine(padding);
 
-        // NOTE: for now, we only have one source file but eventually we will want to group labels by file and render them together
-        try self.renderFileHeader(sourceFile.name, findFirstLabelLineCol(diagnostic.labels, sourceFiles), padding);
-        try self.renderEmptyBorderLine(padding);
+            for (labeledFile.lines) |labeledLine| {
+                const lineRange = labeledLine.range;
+                const line = source.source[lineRange.start..lineRange.end];
+                try self.renderPadding(padding - utils.digitCount(labeledLine.number) - 1);
+                try self.setColor(self.config.colors.border);
+                try self.writer.print("{d} {s} ", .{ labeledLine.number, self.config.charset.border });
+                try self.resetColor();
+                try self.writer.print("{s}\n", .{line});
 
-        // v1 will be stupid simple one line per label and one label per line
-        for (diagnostic.labels, 0..) |label, idx| {
-            const file = sourceFiles[label.fileId];
-            const lineCol = file.lineCol(label.start) catch continue;
-            try self.renderPadding(padding - utils.digitCount(lineCol.line) - 1);
-            try self.setColor(self.config.colors.border);
-            try self.writer.print("{d} {s} ", .{ lineCol.line, self.config.charset.border });
-            try self.resetColor();
+                for (labeledLine.labels) |label| {
+                    const labelStartCol = (try source.lineCol(label.start)).col;
+                    try self.renderPadding(padding);
+                    try self.setColor(self.config.colors.border);
+                    try self.writer.print("{s} ", .{self.config.charset.border});
+                    try self.renderPadding(labelStartCol - 1);
+                    try self.setColor(self.getLabelColor(diagnostic, label));
+                    for (0..(label.end - label.start)) |_|
+                        try self.writer.print("{s}", .{self.getLabelUnderline(label)});
+                    try self.writer.print(" {s}\n", .{label.message});
+                }
 
-            const lineRange = file.lineRange(label.start) catch continue;
-            const line = file.source[lineRange.start..lineRange.end];
-            try self.writer.print("{s}\n", .{line});
-
-            try self.renderPadding(padding);
-            try self.setColor(self.config.colors.border);
-            try self.writer.print("{s} ", .{self.config.charset.border});
-
-            try self.renderPadding(lineCol.col - 1);
-            try self.setColor(self.getLabelColor(diagnostic, label));
-            for (0..(label.end - label.start)) |_|
-                try self.writer.print("{s}", .{self.getLabelUnderline(label)});
-            try self.writer.print(" {s}\n", .{label.message});
-
-            var nextLineCol = lineCol;
-            if (idx + 1 < diagnostic.labels.len)
-                nextLineCol = try file.lineCol(diagnostic.labels[idx + 1].start);
-
-            // NOTE: should we keep this?
-            if (nextLineCol.line - lineCol.line > 1) {
-                try self.renderBorderBreak(padding);
+                try self.renderEmptyBorderLine(padding);
             }
         }
+
+        // const sourceFile = sourceFiles[diagnostic.labels[0].fileId]; // FIXME: temporary single file assumption
+        //
+        // try self.renderMainMessage(diagnostic);
+        //
+        // // NOTE: for now, we only have one source file but eventually we will want to group labels by file and render them together
+        // try self.renderFileHeader(sourceFile.name, findFirstLabelLineCol(diagnostic.labels, sourceFiles), padding);
+        // try self.renderEmptyBorderLine(padding);
+        //
+        // // v1 will be stupid simple one line per label and one label per line
+        // for (diagnostic.labels, 0..) |label, idx| {
+        //     const file = sourceFiles[label.fileId];
+        //     const lineCol = file.lineCol(label.start) catch continue;
+        //     try self.renderPadding(padding - utils.digitCount(lineCol.line) - 1);
+        //     try self.setColor(self.config.colors.border);
+        //     try self.writer.print("{d} {s} ", .{ lineCol.line, self.config.charset.border });
+        //     try self.resetColor();
+        //
+        //     const lineRange = file.lineRange(label.start) catch continue;
+        //     const line = file.source[lineRange.start..lineRange.end];
+        //     try self.writer.print("{s}\n", .{line});
+        //
+        //     try self.renderPadding(padding);
+        //     try self.setColor(self.config.colors.border);
+        //     try self.writer.print("{s} ", .{self.config.charset.border});
+        //
+        //     try self.renderPadding(lineCol.col - 1);
+        //     try self.setColor(self.getLabelColor(diagnostic, label));
+        //     for (0..(label.end - label.start)) |_|
+        //         try self.writer.print("{s}", .{self.getLabelUnderline(label)});
+        //     try self.writer.print(" {s}\n", .{label.message});
+        //
+        //     var nextLineCol = lineCol;
+        //     if (idx + 1 < diagnostic.labels.len)
+        //         nextLineCol = try file.lineCol(diagnostic.labels[idx + 1].start);
+        //
+        //     // NOTE: should we keep this?
+        //     if (nextLineCol.line - lineCol.line > 1) {
+        //         try self.renderBorderBreak(padding);
+        //     }
+        // }
 
         if (diagnostic.notes.len == 0) {
             try self.resetColor();
@@ -167,14 +299,11 @@ fn findFirstLabelLineCol(labels: []const Label, sourceFiles: []const SourceFile)
     return earliest;
 }
 
-fn findLargestLineNumber(labels: []const Label, sourceFiles: []const SourceFile) usize {
-    const file = sourceFiles[labels[0].fileId]; // FIXME: temporary single file assumption
+fn findLargestLineNumber(labeledFiles: []const LabeledFile) usize {
     var largest: usize = 0;
-    for (labels) |label| {
-        const lineCol = file.lineCol(label.end) catch continue;
-        const line = lineCol.line;
-        if (line > largest) {
-            largest = line;
+    for (labeledFiles) |file| {
+        for (file.lines) |line| {
+            if (line.number > largest) largest = line.number;
         }
     }
     return largest;
