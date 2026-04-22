@@ -11,9 +11,18 @@ pub fn main() !void {
     const source =
         \\add: Int × Int -> Int;
         \\let Int = 1;
+        \\let add = 2;
+        \\let x = 3;
+        \\let y = 4;
+        \\let z = 5;
+        \\let z = add(x, y);
+        \\let w = add(z, z);
+        \\ let z = add(x, y) + add(z, w);
+        \\let z = add(x, y) + add(z, w) + add(x, y);
         \\add(x, y) => x + y;
     ;
     const s = zspan.SourceFile.init("example.mp", source, alloc);
+    const sources = &[_]zspan.SourceFile{s};
 
     for (s.lineStarts, 0..) |lineStart, i| {
         const lineEnd = if (i + 1 < s.lineStarts.len) s.lineStarts[i + 1] - 1 else s.source.len;
@@ -25,8 +34,9 @@ pub fn main() !void {
         .severity = .Error,
         .message = "This is an error",
         .labels = &[_]Label{
-            Label.primary(5, 8, "Primary label", &s),
-            Label.secondary(37, 40, "Secondary label", &s),
+            Label.primary(5, 8, "Primary label", 0), // FIXME: temporary assumption
+            Label.primary(72, 82, "Another primary label", 0), // FIXME: temporary assumption
+            Label.secondary(153, 156, "Secondary label", 0), // FIXME: temporary assumption
         },
         .notes = &[_][]const u8{
             "This is a note",
@@ -39,7 +49,7 @@ pub fn main() !void {
     const stdout = &stdout_writer.interface;
 
     try stdout.print("hello\n", .{});
-    try zspan.displayDiagnostic(d, s, stdout);
+    try zspan.displayDiagnostic(d, sources, stdout);
 
     try stdout.flush();
 }

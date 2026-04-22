@@ -19,25 +19,28 @@ pub const Renderer = struct {
         };
     }
 
-    pub fn renderDiagnostic(self: *Renderer, diagnostic: Diagnostic, sourceFile: SourceFile) !void {
+    pub fn renderDiagnostic(self: *Renderer, diagnostic: Diagnostic, sourceFiles: []const SourceFile) !void {
+        const sourceFile = sourceFiles[diagnostic.labels[0].fileId]; // FIXME: temporary single file assumption
+
         try self.renderMainMessage(diagnostic);
 
-        const padding = utils.digitCount(findLargestLineNumber(diagnostic.labels)) + 1; // +1 for the space after the line number
+        const padding = utils.digitCount(findLargestLineNumber(diagnostic.labels, sourceFiles)) + 1; // +1 for the space after the line number
 
         // NOTE: for now, we only have one source file but eventually we will want to group labels by file and render them together
-        try self.renderFileHeader(sourceFile.name, findFirstLabelLineCol(diagnostic.labels), padding);
+        try self.renderFileHeader(sourceFile.name, findFirstLabelLineCol(diagnostic.labels, sourceFiles), padding);
         try self.renderEmptyBorderLine(padding);
 
         // v1 will be stupid simple one line per label and one label per line
         for (diagnostic.labels, 0..) |label, idx| {
-            const lineCol = label.file.lineCol(label.start) catch continue;
+            const file = sourceFiles[label.fileId];
+            const lineCol = file.lineCol(label.start) catch continue;
             try self.renderPadding(padding - utils.digitCount(lineCol.line) - 1);
             try self.setColor(self.config.colors.border);
             try self.writer.print("{d} {s} ", .{ lineCol.line, self.config.charset.border });
             try self.resetColor();
 
-            const lineRange = label.file.lineRange(label.start) catch continue;
-            const line = label.file.source[lineRange.start..lineRange.end];
+            const lineRange = file.lineRange(label.start) catch continue;
+            const line = file.source[lineRange.start..lineRange.end];
             try self.writer.print("{s}\n", .{line});
 
             try self.renderPadding(padding);
@@ -52,7 +55,7 @@ pub const Renderer = struct {
 
             var nextLineCol = lineCol;
             if (idx + 1 < diagnostic.labels.len)
-                nextLineCol = try label.file.lineCol(diagnostic.labels[idx + 1].start);
+                nextLineCol = try file.lineCol(diagnostic.labels[idx + 1].start);
 
             // NOTE: should we keep this?
             if (nextLineCol.line - lineCol.line > 1) {
@@ -60,7 +63,10 @@ pub const Renderer = struct {
             }
         }
 
-        if (diagnostic.notes.len == 0) return;
+        if (diagnostic.notes.len == 0) {
+            try self.resetColor();
+            return;
+        }
 
         try self.renderEmptyBorderLine(padding);
 
@@ -145,14 +151,15 @@ pub const Renderer = struct {
     }
 };
 
-fn findFirstLabelLineCol(labels: []const Label) LineCol {
-    var earliest = labels[0].file.lineCol(labels[0].start) catch LineCol{
+fn findFirstLabelLineCol(labels: []const Label, sourceFiles: []const SourceFile) LineCol {
+    const file = sourceFiles[labels[0].fileId]; // FIXME: temporary single file assumption
+    var earliest = file.lineCol(labels[0].start) catch LineCol{
         .line = std.math.maxInt(usize),
         .col = std.math.maxInt(usize),
     };
 
     for (labels) |label| {
-        const lc = label.file.lineCol(label.start) catch continue;
+        const lc = file.lineCol(label.start) catch continue;
         if (lc.line < earliest.line or (lc.line == earliest.line and lc.col < earliest.col)) {
             earliest = lc;
         }
@@ -160,10 +167,11 @@ fn findFirstLabelLineCol(labels: []const Label) LineCol {
     return earliest;
 }
 
-fn findLargestLineNumber(labels: []const Label) usize {
+fn findLargestLineNumber(labels: []const Label, sourceFiles: []const SourceFile) usize {
+    const file = sourceFiles[labels[0].fileId]; // FIXME: temporary single file assumption
     var largest: usize = 0;
     for (labels) |label| {
-        const lineCol = label.file.lineCol(label.end) catch continue;
+        const lineCol = file.lineCol(label.end) catch continue;
         const line = lineCol.line;
         if (line > largest) {
             largest = line;
