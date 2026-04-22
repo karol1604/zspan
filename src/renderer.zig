@@ -117,6 +117,8 @@ pub const Renderer = struct {
         sourceFiles: []const SourceFile,
         alloc: std.mem.Allocator,
     ) !void {
+        try self.renderMainMessage(diagnostic);
+
         const labeledFiles = try buildLabeledFiles(diagnostic.labels, sourceFiles, alloc);
         const padding = utils.digitCount(findLargestLineNumber(labeledFiles)) + 1; // +1 for the space after the line number
 
