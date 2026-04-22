@@ -60,6 +60,8 @@ pub const Renderer = struct {
             }
         }
 
+        if (diagnostic.notes.len == 0) return;
+
         try self.renderEmptyBorderLine(padding);
 
         for (diagnostic.notes) |note| {
