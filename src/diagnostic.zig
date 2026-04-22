@@ -1,6 +1,7 @@
 const std = @import("std");
 const sourcefile = @import("sourcefile.zig");
 const SourceFile = sourcefile.SourceFile;
+const config = @import("config.zig");
 
 pub const Severity = enum {
     Error,

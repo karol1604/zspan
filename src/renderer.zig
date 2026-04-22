@@ -3,6 +3,8 @@ const Config = @import("config.zig").Config;
 const Diagnostic = @import("diagnostic.zig").Diagnostic;
 const SourceFile = @import("sourcefile.zig").SourceFile;
 const LineCol = @import("utils.zig").LineCol;
+const Label = @import("diagnostic.zig").Label;
+const utils = @import("utils.zig");
 
 const BOLD = "\x1b[1m";
 
@@ -19,7 +21,54 @@ pub const Renderer = struct {
 
     pub fn renderDiagnostic(self: *Renderer, diagnostic: Diagnostic, sourceFile: SourceFile) !void {
         try self.renderMainMessage(diagnostic);
-        try self.renderFileHeader(sourceFile.name, LineCol{ .line = 1, .col = 1 });
+
+        const padding = utils.digitCount(findLargestLineNumber(diagnostic.labels)) + 1; // +1 for the space after the line number
+
+        // NOTE: for now, we only have one source file but eventually we will want to group labels by file and render them together
+        try self.renderFileHeader(sourceFile.name, findFirstLabelLineCol(diagnostic.labels), padding);
+        try self.renderEmptyBorderLine(padding);
+
+        // v1 will be stupid simple one line per label and one label per line
+        for (diagnostic.labels, 0..) |label, idx| {
+            const lineCol = label.file.lineCol(label.start) catch continue;
+            try self.renderPadding(padding - utils.digitCount(lineCol.line) - 1);
+            try self.setColor(self.config.colors.border);
+            try self.writer.print("{d} {s} ", .{ lineCol.line, self.config.charset.border });
+            try self.resetColor();
+
+            const lineRange = label.file.lineRange(label.start) catch continue;
+            const line = label.file.source[lineRange.start..lineRange.end];
+            try self.writer.print("{s}\n", .{line});
+
+            try self.renderPadding(padding);
+            try self.setColor(self.config.colors.border);
+            try self.writer.print("{s} ", .{self.config.charset.border});
+
+            try self.renderPadding(lineCol.col - 1);
+            try self.setColor(self.getLabelColor(diagnostic, label));
+            for (0..(label.end - label.start)) |_|
+                try self.writer.print("{s}", .{self.getLabelUnderline(label)});
+            try self.writer.print(" {s}\n", .{label.message});
+
+            var nextLineCol = lineCol;
+            if (idx + 1 < diagnostic.labels.len)
+                nextLineCol = try label.file.lineCol(diagnostic.labels[idx + 1].start);
+
+            // NOTE: should we keep this?
+            if (nextLineCol.line - lineCol.line > 1) {
+                try self.renderBorderBreak(padding);
+            }
+        }
+
+        try self.renderEmptyBorderLine(padding);
+
+        for (diagnostic.notes) |note| {
+            try self.renderPadding(padding);
+            try self.setColor(self.config.colors.border);
+            try self.writer.print("{s} ", .{self.config.charset.noteMarker});
+            try self.resetColor();
+            try self.writer.print("{s}\n", .{note});
+        }
     }
 
     fn setColor(self: *const Renderer, color: std.io.tty.Color) !void {
@@ -39,7 +88,9 @@ pub const Renderer = struct {
         try self.writer.print(": {s}\n", .{diagnostic.message});
     }
 
-    fn renderFileHeader(self: *Renderer, fileName: []const u8, lineCol: LineCol) !void {
+    fn renderFileHeader(self: *Renderer, fileName: []const u8, lineCol: LineCol, padding: usize) !void {
+        try self.renderPadding(padding);
+
         try self.setColor(self.config.colors.border);
         try self.writer.print("{s}", .{self.config.charset.headerStart});
         try self.writer.print("[ ", .{});
@@ -53,7 +104,68 @@ pub const Renderer = struct {
         // try self.renderEmptyBorderLine(padding);
     }
 
+    /// Renders a line with just the border character, appended a new line.
+    fn renderEmptyBorderLine(self: *const Renderer, padding: usize) !void {
+        try self.renderPadding(padding);
+        try self.setColor(self.config.colors.border);
+        try self.writer.print("{s}", .{self.config.charset.border});
+        try self.resetColor();
+        try self.writer.print("\n", .{});
+    }
+
+    fn renderBorderBreak(self: *const Renderer, padding: usize) !void {
+        try self.renderPadding(padding);
+        try self.setColor(self.config.colors.border);
+        try self.writer.print("{s}\n", .{self.config.charset.borderBreak});
+        try self.resetColor();
+    }
+
     fn renderFileLocation(self: *const Renderer, fileName: []const u8, startLoc: LineCol) !void {
         try self.writer.print("{s}:{f}", .{ fileName, startLoc });
     }
+
+    fn renderPadding(self: *const Renderer, padding: usize) !void {
+        for (0..padding) |_| try self.writer.print(" ", .{});
+    }
+
+    fn getLabelColor(self: *const Renderer, diagnostic: Diagnostic, label: Label) std.io.tty.Color {
+        return switch (label.style) {
+            .Primary => self.config.colors.header(diagnostic.severity),
+            .Secondary => self.config.colors.secondaryLabel,
+        };
+    }
+
+    fn getLabelUnderline(self: *const Renderer, label: Label) []const u8 {
+        return switch (label.style) {
+            .Primary => self.config.charset.primaryUnderline,
+            .Secondary => self.config.charset.secondaryUnderline,
+        };
+    }
 };
+
+fn findFirstLabelLineCol(labels: []const Label) LineCol {
+    var earliest = labels[0].file.lineCol(labels[0].start) catch LineCol{
+        .line = std.math.maxInt(usize),
+        .col = std.math.maxInt(usize),
+    };
+
+    for (labels) |label| {
+        const lc = label.file.lineCol(label.start) catch continue;
+        if (lc.line < earliest.line or (lc.line == earliest.line and lc.col < earliest.col)) {
+            earliest = lc;
+        }
+    }
+    return earliest;
+}
+
+fn findLargestLineNumber(labels: []const Label) usize {
+    var largest: usize = 0;
+    for (labels) |label| {
+        const lineCol = label.file.lineCol(label.end) catch continue;
+        const line = lineCol.line;
+        if (line > largest) {
+            largest = line;
+        }
+    }
+    return largest;
+}

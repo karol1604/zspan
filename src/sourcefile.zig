@@ -61,7 +61,7 @@ pub const SourceFile = struct {
     }
 
     // TODO: this is ugly
-    fn lineRange(self: *const SourceFile, byteOffset: usize) !Range {
+    pub fn lineRange(self: *const SourceFile, byteOffset: usize) !Range {
         const start = try self.lineStart(byteOffset);
         const lineIdx = self.lineIndex(byteOffset);
         const nextLineStart = if (lineIdx + 1 < self.lineStarts.len) self.lineStarts[lineIdx + 1] else self.source.len;

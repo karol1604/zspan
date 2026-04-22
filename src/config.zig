@@ -76,7 +76,7 @@ const Charset = struct {
             .headerStart = "┌─",
             .border = "│",
             // .noteMarker = "•",
-            .borderBreak = "•",
+            .borderBreak = "⋮",
             .noteMarker = "=",
             .primaryUnderline = "^",
             .secondaryUnderline = "~",

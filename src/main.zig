@@ -25,8 +25,8 @@ pub fn main() !void {
         .severity = .Error,
         .message = "This is an error",
         .labels = &[_]Label{
-            Label.primary(10, 15, "Primary label", &s),
-            Label.secondary(20, 25, "Secondary label", &s),
+            Label.primary(5, 8, "Primary label", &s),
+            Label.secondary(37, 40, "Secondary label", &s),
         },
         .notes = &[_][]const u8{
             "This is a note",

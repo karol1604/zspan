@@ -47,3 +47,8 @@ pub const Range = struct {
         return self.start == self.end;
     }
 };
+
+pub fn digitCount(n: usize) usize {
+    if (n == 0) return 1;
+    return std.math.log10_int(n) + 1;
+}
