@@ -131,7 +131,7 @@ pub const Renderer = struct {
             try self.renderFileHeader(source.name, firstLineCol, padding);
             try self.renderEmptyBorderLine(padding);
 
-            for (labeledFile.lines) |labeledLine| {
+            for (labeledFile.lines, 0..) |labeledLine, idx| {
                 const lineRange = labeledLine.range;
                 const line = source.source[lineRange.start..lineRange.end];
                 try self.renderPadding(padding - utils.digitCount(labeledLine.number) - 1);
@@ -152,50 +152,15 @@ pub const Renderer = struct {
                     try self.writer.print(" {s}\n", .{label.message});
                 }
 
-                try self.renderEmptyBorderLine(padding);
+                // try self.renderEmptyBorderLine(padding);
+
+                const nextLineNum = if (idx + 1 < labeledFile.lines.len) labeledFile.lines[idx + 1].number else labeledLine.number;
+                //
+                if (nextLineNum - labeledLine.number > 1) {
+                    try self.renderBorderBreak(padding);
+                }
             }
         }
-
-        // const sourceFile = sourceFiles[diagnostic.labels[0].fileId]; // FIXME: temporary single file assumption
-        //
-        // try self.renderMainMessage(diagnostic);
-        //
-        // // NOTE: for now, we only have one source file but eventually we will want to group labels by file and render them together
-        // try self.renderFileHeader(sourceFile.name, findFirstLabelLineCol(diagnostic.labels, sourceFiles), padding);
-        // try self.renderEmptyBorderLine(padding);
-        //
-        // // v1 will be stupid simple one line per label and one label per line
-        // for (diagnostic.labels, 0..) |label, idx| {
-        //     const file = sourceFiles[label.fileId];
-        //     const lineCol = file.lineCol(label.start) catch continue;
-        //     try self.renderPadding(padding - utils.digitCount(lineCol.line) - 1);
-        //     try self.setColor(self.config.colors.border);
-        //     try self.writer.print("{d} {s} ", .{ lineCol.line, self.config.charset.border });
-        //     try self.resetColor();
-        //
-        //     const lineRange = file.lineRange(label.start) catch continue;
-        //     const line = file.source[lineRange.start..lineRange.end];
-        //     try self.writer.print("{s}\n", .{line});
-        //
-        //     try self.renderPadding(padding);
-        //     try self.setColor(self.config.colors.border);
-        //     try self.writer.print("{s} ", .{self.config.charset.border});
-        //
-        //     try self.renderPadding(lineCol.col - 1);
-        //     try self.setColor(self.getLabelColor(diagnostic, label));
-        //     for (0..(label.end - label.start)) |_|
-        //         try self.writer.print("{s}", .{self.getLabelUnderline(label)});
-        //     try self.writer.print(" {s}\n", .{label.message});
-        //
-        //     var nextLineCol = lineCol;
-        //     if (idx + 1 < diagnostic.labels.len)
-        //         nextLineCol = try file.lineCol(diagnostic.labels[idx + 1].start);
-        //
-        //     // NOTE: should we keep this?
-        //     if (nextLineCol.line - lineCol.line > 1) {
-        //         try self.renderBorderBreak(padding);
-        //     }
-        // }
 
         if (diagnostic.notes.len == 0) {
             try self.resetColor();
