@@ -34,6 +34,18 @@ fn getLineStarts(source: []const u8, alloc: std.mem.Allocator) []usize {
     };
 }
 
+pub fn displayCol(source: []const u8, from: usize, to: usize) usize {
+    var col: usize = 0;
+    var view = std.unicode.Utf8View.init(source[from..to]) catch return to - from;
+    var iter = view.iterator();
+    while (iter.nextCodepoint()) |_| col += 1;
+    return col;
+}
+
+pub fn displayWidth(source: []const u8, from: usize, to: usize) usize {
+    return displayCol(source, from, to);
+}
+
 pub const SourceFile = struct {
     name: []const u8,
     source: []const u8,
@@ -76,7 +88,7 @@ pub const SourceFile = struct {
         }
 
         const ls = self.lineStarts[lineIdx];
-        const col = byteOffset - ls;
+        const col = displayCol(self.source, ls, byteOffset);
         return LineCol{ .line = lineIdx + 1, .col = col + 1 };
     }
 };

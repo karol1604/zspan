@@ -4,7 +4,8 @@ const Config = @import("config.zig").Config;
 const Diagnostic = @import("diagnostic.zig").Diagnostic;
 const Label = @import("diagnostic.zig").Label;
 const LineCol = @import("utils.zig").LineCol;
-const SourceFile = @import("sourcefile.zig").SourceFile;
+const sf = @import("sourcefile.zig");
+const SourceFile = sf.SourceFile;
 const utils = @import("utils.zig");
 
 const LabeledLine = struct {
@@ -141,13 +142,14 @@ pub const Renderer = struct {
                 try self.writer.print("{s}\n", .{line});
 
                 for (labeledLine.labels) |label| {
-                    const labelStartCol = (try source.lineCol(label.start)).col;
+                    const labelStartDisplayCol = sf.displayCol(source.source, lineRange.start, label.start);
+                    const labelDisplayWidth = sf.displayWidth(source.source, label.start, label.end);
                     try self.renderPadding(padding);
                     try self.setColor(self.config.colors.border);
                     try self.writer.print("{s} ", .{self.config.charset.border});
-                    try self.renderPadding(labelStartCol - 1);
+                    try self.renderPadding(labelStartDisplayCol);
                     try self.setColor(self.getLabelColor(diagnostic, label));
-                    for (0..(label.end - label.start)) |_|
+                    for (0..labelDisplayWidth) |_|
                         try self.writer.print("{s}", .{self.getLabelUnderline(label)});
                     try self.writer.print(" {s}\n", .{label.message});
                 }
