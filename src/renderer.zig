@@ -44,6 +44,80 @@ const UnderlineLane = struct {
     endCol: usize,
 };
 
+const RowKind = enum {
+    Underline,
+    Message,
+    Connector,
+};
+
+const RowSegment = struct {
+    kind: RowKind,
+    startCol: usize,
+    width: usize,
+    text: []const u8,
+    color: std.io.tty.Color,
+
+    pub fn format(self: RowSegment, writer: *std.io.Writer) !void {
+        try writer.print("{{\n", .{});
+        try writer.print("  kind: {s},\n", .{@tagName(self.kind)});
+        try writer.print("  startCol: {d},\n", .{self.startCol});
+        try writer.print("  width: {d},\n", .{self.width});
+        try writer.print("  text: {s},\n", .{self.text});
+        try writer.print("  color: {s},\n", .{@tagName(self.color)});
+        try writer.print("}}\n", .{});
+    }
+};
+
+const Span = struct {
+    start: usize,
+    end: usize,
+};
+
+fn spansOverlap(a: Span, b: Span) bool {
+    return a.start < b.end and b.start < a.end;
+}
+
+fn underlineSpan(label: VisualLabel) Span {
+    return Span{
+        .start = label.startCol,
+        .end = label.endCol,
+    };
+}
+
+fn messageDisplayWidth(message: []const u8) usize {
+    return sf.displayWidth(message, 0, message.len);
+}
+
+fn messageSpan(label: VisualLabel) Span {
+    const start = label.endCol + 1;
+    const width = messageDisplayWidth(label.label.message);
+    return Span{
+        .start = start,
+        .end = start + width,
+    };
+}
+
+fn laneCanInlineMessages(labels: []const VisualLabel) bool {
+    for (labels, 0..) |label, i| {
+        if (label.label.message.len == 0) continue;
+
+        const message = messageSpan(label);
+        for (labels) |otherLabel| {
+            if (spansOverlap(message, underlineSpan(otherLabel))) {
+                return false;
+            }
+        }
+
+        for (labels[i + 1 ..]) |otherLabel| {
+            if (otherLabel.label.message.len == 0) continue;
+            if (spansOverlap(message, messageSpan(otherLabel))) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 fn findOrCreateLabeledFile(
     files: *std.ArrayList(LabeledFileBuilder),
     file_id: usize,
@@ -203,7 +277,7 @@ pub const Renderer = struct {
         return false;
     }
 
-    fn buildUnderlineLanes(labels: []VisualLabel, alloc: std.mem.Allocator) ![]UnderlineLane {
+    fn buildUnderlineLanes(_: *Renderer, labels: []VisualLabel, alloc: std.mem.Allocator) ![]UnderlineLane {
         var lanes: std.ArrayList(UnderlineLane) = .empty;
 
         for (labels) |label| {
@@ -242,27 +316,26 @@ pub const Renderer = struct {
         try self.resetColor();
     }
 
-    fn renderLabeledSourceLine(
-        self: *Renderer,
-        diagnostic: Diagnostic,
-        source: SourceFile,
-        labeledLine: LabeledLine,
-        padding: usize,
-        alloc: std.mem.Allocator,
-    ) !void {
+    fn renderSourceLine(self: *Renderer, source: SourceFile, labeledLine: LabeledLine, padding: usize) !void {
         const lineRange = labeledLine.range;
         const line = source.source[lineRange.start..lineRange.end];
-        try self.renderPadding(padding - utils.digitCount(labeledLine.number) - 1);
+        try self.renderPadding(padding);
         try self.setColor(self.config.colors.border);
         try self.writer.print("{d} {s} ", .{ labeledLine.number, self.config.charset.border });
         try self.resetColor();
         try self.writer.print("{s}\n", .{line});
+    }
 
+    fn buildVisualLabels(
+        _: *Renderer,
+        source: SourceFile,
+        labeledLine: LabeledLine,
+        alloc: std.mem.Allocator,
+    ) ![]VisualLabel {
         var visualLabels: std.ArrayList(VisualLabel) = .empty;
 
-        // build visual labels for this line
         for (labeledLine.labels) |label| {
-            const startCol = sf.displayCol(source.source, lineRange.start, label.start);
+            const startCol = sf.displayCol(source.source, labeledLine.range.start, label.start);
             const width = @max(1, sf.displayWidth(source.source, label.start, label.end));
             const endCol = startCol + width;
 
@@ -276,94 +349,118 @@ pub const Renderer = struct {
             try visualLabels.append(alloc, vl);
         }
 
-        std.sort.block(VisualLabel, visualLabels.items, {}, compareVisualLabels);
+        return try visualLabels.toOwnedSlice(alloc);
+    }
 
-        const ul = try Renderer.buildUnderlineLanes(visualLabels.items, alloc);
+    fn planLaneRow(
+        self: *Renderer,
+        diagnostic: Diagnostic,
+        lane: UnderlineLane,
+        alloc: std.mem.Allocator,
+    ) ![]const RowSegment {
+        var segments: std.ArrayList(RowSegment) = .empty;
+        const canInline = laneCanInlineMessages(lane.labels.items);
 
-        for (ul) |lane| {
-            try self.renderBorderPrefix(padding);
+        for (lane.labels.items) |label| {
+            const color = self.getLabelColor(diagnostic, label.label);
+            const underlineChar = self.getLabelUnderline(label.label);
 
-            var currentCol: usize = 0;
+            try segments.append(alloc, .{
+                .kind = .Underline,
+                .startCol = label.startCol,
+                .width = label.width,
+                .text = underlineChar,
+                .color = color,
+            });
 
-            var occupiedCols: std.ArrayList(u1) = .empty;
-            try occupiedCols.resize(alloc, lane.endCol);
-            std.debug.print("occupied cols len: {d}\n", .{occupiedCols.items.len});
-
-            for (lane.labels.items) |label| {
-                const color = self.getLabelColor(diagnostic, label.label);
-                const underlineChar = self.getLabelUnderline(label.label);
-                try self.renderUnderline(&currentCol, label.startCol, label.width, underlineChar, color);
-                @memset(occupiedCols.items[label.startCol..label.endCol], 1);
+            if (canInline and label.label.message.len > 0) {
+                try segments.append(alloc, .{
+                    .kind = .Message,
+                    .startCol = label.endCol + 1,
+                    .width = messageDisplayWidth(label.label.message),
+                    .text = label.label.message,
+                    .color = color,
+                });
             }
-            std.debug.print("Occupied cols: {any}\n", .{occupiedCols.items});
-            try self.resetColor();
-
-            var allLabelsFitOnLine = true;
-
-            for (0..lane.labels.items.len) |i| {
-                const label = lane.labels.items[lane.labels.items.len - 1 - i];
-                const messageStart = label.endCol + 1;
-                const messageEnd = messageStart + sf.displayWidth(label.label.message, 0, label.label.message.len);
-
-                var isFree = true;
-                for (messageStart..messageEnd) |col| {
-                    if (col < occupiedCols.items.len and occupiedCols.items[col] == 1) {
-                        isFree = false;
-                        allLabelsFitOnLine = false;
-                        break;
-                    }
-                }
-
-                if (isFree) {
-                    try occupiedCols.resize(alloc, messageEnd);
-                    @memset(occupiedCols.items[messageStart..messageEnd], 1);
-                }
-
-                std.debug.print("Placing message for label '{s}' at col {d}. isFree = {any}\n", .{ label.label.message, messageStart, isFree });
-                std.debug.print("Occupied cols after placing message: {any}\n", .{occupiedCols.items});
-            }
-            std.debug.print("**All labels fit on line: {any}\n", .{allLabelsFitOnLine});
-
-            if (allLabelsFitOnLine) {
-                for (lane.labels.items) |label| {
-                    const messageStart = label.endCol + 1;
-                    try self.renderSpacesTo(&currentCol, messageStart);
-                    try self.setColor(self.getLabelColor(diagnostic, label.label));
-                    try self.writer.print("{s}", .{label.label.message});
-                }
-            }
-            try self.writer.print("\n", .{});
         }
 
-        // for (visualLabels.items) |vl| {
-        //     std.debug.print("Visual label: {s} [{d}, {d})\n", .{ vl.label.message, vl.startCol, vl.endCol });
-        //     try self.renderPadding(padding);
-        //     try self.setColor(self.config.colors.border);
-        //     try self.writer.print("{s} ", .{self.config.charset.border});
-        //     try self.renderPadding(vl.startCol);
-        //     try self.setColor(self.getLabelColor(diagnostic, vl.label));
-        //     // for (0..vl.width) |_| try self.writer.print("{s}", .{self.getLabelUnderline(vl.label)});
-        //     try self.renderUnderline(vl.label, vl.width);
-        //     try self.writer.print(" {s}\n", .{vl.label.message});
-        // }
+        std.sort.block(RowSegment, segments.items, {}, compareRowSegments);
 
-        // for (labeledLine.labels) |label| {
-        //     const labelStartDisplayCol = sf.displayCol(source.source, lineRange.start, label.start);
-        //     const labelDisplayWidth = sf.displayWidth(source.source, label.start, label.end);
-        //     try self.renderPadding(padding);
-        //     try self.setColor(self.config.colors.border);
-        //     try self.writer.print("{s} ", .{self.config.charset.border});
-        //     try self.renderPadding(labelStartDisplayCol);
-        //     try self.setColor(self.getLabelColor(diagnostic, label));
-        //     for (0..labelDisplayWidth) |_|
-        //         try self.writer.print("{s}", .{self.getLabelUnderline(label)});
-        //     try self.writer.print(" {s}\n", .{label.message});
-        // }
+        return try segments.toOwnedSlice(alloc);
+    }
+
+    fn planAnnotationRows(
+        self: *Renderer,
+        diagnostic: Diagnostic,
+        lanes: []UnderlineLane,
+        alloc: std.mem.Allocator,
+    ) ![]const []const RowSegment {
+        var rows: std.ArrayList([]const RowSegment) = .empty;
+
+        for (lanes) |lane| {
+            const row = try self.planLaneRow(diagnostic, lane, alloc);
+            try rows.append(alloc, row);
+        }
+
+        return try rows.toOwnedSlice(alloc);
+    }
+
+    fn renderRowSegments(self: *Renderer, padding: usize, segments: []const RowSegment) !void {
+        try self.renderBorderPrefix(padding);
+
+        var currentCol: usize = 0;
+
+        for (segments) |segment| {
+            try self.renderSpacesTo(&currentCol, segment.startCol);
+            try self.setColor(segment.color);
+
+            switch (segment.kind) {
+                .Underline, .Connector => {
+                    for (0..segment.width) |_| {
+                        try self.writer.print("{s}", .{segment.text});
+                    }
+                },
+                .Message => {
+                    try self.writer.print("{s}", .{segment.text});
+                },
+            }
+            try self.resetColor();
+            currentCol = segment.startCol + segment.width;
+        }
+        try self.writer.print("\n", .{});
+    }
+
+    fn renderLabeledSourceLine(
+        self: *Renderer,
+        diagnostic: Diagnostic,
+        source: SourceFile,
+        labeledLine: LabeledLine,
+        padding: usize,
+        alloc: std.mem.Allocator,
+    ) !void {
+        try self.renderSourceLine(source, labeledLine, padding - utils.digitCount(labeledLine.number) - 1);
+
+        const visualLabels = try self.buildVisualLabels(source, labeledLine, alloc);
+        std.sort.block(VisualLabel, visualLabels, {}, compareVisualLabels);
+
+        const ul = try self.buildUnderlineLanes(visualLabels, alloc);
+
+        const rows = try self.planAnnotationRows(diagnostic, ul, alloc);
+        for (rows) |row| {
+            try self.renderRowSegments(padding, row);
+        }
+    }
+
+    fn compareRowSegments(_: void, a: RowSegment, b: RowSegment) bool {
+        if (a.startCol != b.startCol) return a.startCol < b.startCol;
+
+        // underlines should render before messages if they somehow have same start
+        return @intFromEnum(a.kind) < @intFromEnum(b.kind);
     }
 
     fn renderSpacesTo(self: *Renderer, currentCol: *usize, targetCol: usize) !void {
         while (currentCol.* < targetCol) : (currentCol.* += 1) {
-            try self.writer.print("+", .{});
+            try self.writer.print(" ", .{});
         }
     }
 
