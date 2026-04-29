@@ -1,7 +1,7 @@
 const std = @import("std");
 const Severity = @import("diagnostic.zig").Severity;
 
-const Color = std.io.tty.Color;
+const Color = std.Io.Terminal.Color;
 
 pub const Config = struct {
     displayMode: enum {
@@ -9,7 +9,7 @@ pub const Config = struct {
         Verbose,
     },
     charset: Charset,
-    colorMode: std.io.tty.Config,
+    colorMode: std.Io.Terminal.Mode,
     colors: ColorSet,
 
     pub fn default() Config {

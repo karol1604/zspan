@@ -9,7 +9,7 @@ pub const Severity = @import("diagnostic.zig").Severity;
 pub fn displayDiagnostic(
     diagnostic: Diagnostic,
     sources: []const SourceFile,
-    writer: *std.io.Writer,
+    writer: *std.Io.Writer,
     alloc: std.mem.Allocator,
 ) !void {
     var renderer = Renderer.init(Config.default(), writer);

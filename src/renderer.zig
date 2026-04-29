@@ -55,7 +55,7 @@ const RowSegment = struct {
     startCol: usize,
     width: usize,
     text: []const u8,
-    color: std.io.tty.Color,
+    color: std.Io.Terminal.Color,
 
     pub fn format(self: RowSegment, writer: *std.io.Writer) !void {
         try writer.print("{{\n", .{});
@@ -209,9 +209,9 @@ fn compareLabeledLines(_: void, a: LabeledLineBuilder, b: LabeledLineBuilder) bo
 
 pub const Renderer = struct {
     config: Config,
-    writer: *std.io.Writer,
+    writer: *std.Io.Writer,
 
-    pub fn init(config: Config, writer: *std.io.Writer) Renderer {
+    pub fn init(config: Config, writer: *std.Io.Writer) Renderer {
         return .{
             .config = config,
             .writer = writer,
@@ -655,12 +655,20 @@ pub const Renderer = struct {
 
         currentCol.* = startCol + width;
     }
-    fn setColor(self: *const Renderer, color: std.io.tty.Color) !void {
-        try std.io.tty.Config.setColor(self.config.colorMode, self.writer, color);
+    fn setColor(self: *const Renderer, color: std.Io.Terminal.Color) !void {
+        const terminal: std.Io.Terminal = .{
+            .mode = self.config.colorMode,
+            .writer = self.writer,
+        };
+        try terminal.setColor(color);
     }
 
     fn resetColor(self: *const Renderer) !void {
-        try std.io.tty.Config.setColor(self.config.colorMode, self.writer, .reset);
+        const terminal: std.Io.Terminal = .{
+            .mode = self.config.colorMode,
+            .writer = self.writer,
+        };
+        try terminal.setColor(.reset);
     }
 
     fn renderMainMessage(self: *Renderer, diagnostic: Diagnostic) !void {
@@ -712,7 +720,7 @@ pub const Renderer = struct {
         for (0..padding) |_| try self.writer.print(" ", .{});
     }
 
-    fn getLabelColor(self: *const Renderer, diagnostic: Diagnostic, label: Label) std.io.tty.Color {
+    fn getLabelColor(self: *const Renderer, diagnostic: Diagnostic, label: Label) std.Io.Terminal.Color {
         return switch (label.style) {
             .Primary => self.config.colors.header(diagnostic.severity),
             .Secondary => self.config.colors.secondaryLabel,

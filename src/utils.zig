@@ -4,7 +4,7 @@ pub const LineCol = struct {
     line: usize,
     col: usize,
 
-    pub fn format(self: LineCol, writer: *std.io.Writer) !void {
+    pub fn format(self: LineCol, writer: *std.Io.Writer) !void {
         try writer.print("{d}:{d}", .{ self.line, self.col });
     }
 };

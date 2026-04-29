@@ -3,7 +3,7 @@ const zspan = @import("zspan");
 const Diagnostic = zspan.Diagnostic;
 const Label = zspan.Label;
 
-pub fn main() !void {
+pub fn main(init: std.process.Init) !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     const alloc = arena.allocator();
     defer arena.deinit();
@@ -48,7 +48,7 @@ pub fn main() !void {
     };
 
     var stdout_buffer: [4096]u8 = undefined;
-    var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
+    var stdout_writer = std.Io.File.stdout().writer(init.io, &stdout_buffer);
     const stdout = &stdout_writer.interface;
 
     try stdout.print("hello\n", .{});
