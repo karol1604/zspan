@@ -10,14 +10,14 @@ pub fn main() !void {
 
     const source =
         \\add: Int × Int -> Int;
-        \\let Int = 1;
+        \\let a: bool = 123;
         \\let add = 2;
         \\let x = 3;
         \\let y = 4;
         \\let z = 5;
         \\let z = add(x, y);
         \\let w = add(z, z);
-        \\ let z = add(x, y) + add(z, w);
+        \\let z = add(x, y) + add(z, w);
         \\let z = add(x, y) + add(z, w) + add(x, y);
         \\add(x, y) => x + y;
     ;
@@ -31,14 +31,14 @@ pub fn main() !void {
     }
 
     const d = Diagnostic{
-        .severity = .Error,
+        .severity = .@"error",
         .message = "This is an error",
         .labels = &[_]Label{
-            Label.primary(5, 8, "Primary label", 0), // FIXME: temporary assumption
-            Label.primary(24, 27, "asd", 0), // FIXME: temporary assumption
-            Label.secondary(34, 35, "Another secondary label", 0), // FIXME: temporary assumption
-            // Label.primary(72, 82, "Another primary label", 0), // FIXME: temporary assumption
-            // Label.secondary(153, 156, "Secondary label", 0), // FIXME: temporary assumption
+            // Label.primary(5, 8, "Primary label", 0), // FIXME: temporary assumption
+            Label.secondary(31, 35, "expected type `bool`", 0), // FIXME: temporary assumption
+            Label.primary(38, 41, "found `int`", 0), // FIXME: temporary assumption
+            Label.primary(43, 55, "Another primary label", 0), // FIXME: temporary assumption
+            Label.secondary(153, 156, "Secondary label", 0), // FIXME: temporary assumption
             // Label.primary(161, 164, "Secondary label", 0), // FIXME: temporary assumption
         },
         .notes = &[_][]const u8{

@@ -6,9 +6,9 @@ const SourceFile = sourcefile.SourceFile;
 const utils = @import("utils.zig");
 
 pub const Severity = enum {
-    Error,
-    Warning,
-    Info,
+    @"error",
+    warning,
+    info,
 };
 
 pub const Label = struct {

@@ -321,7 +321,12 @@ pub const Renderer = struct {
         try self.resetColor();
     }
 
-    fn renderSourceLine(self: *Renderer, source: SourceFile, labeledLine: LabeledLine, padding: usize) !void {
+    fn renderSourceLine(
+        self: *Renderer,
+        source: SourceFile,
+        labeledLine: LabeledLine,
+        padding: usize,
+    ) !void {
         const lineRange = labeledLine.range;
         const line = source.source[lineRange.start..lineRange.end];
         try self.renderPadding(padding);

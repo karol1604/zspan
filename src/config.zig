@@ -55,9 +55,9 @@ const ColorSet = struct {
 
     pub fn header(self: ColorSet, sev: Severity) Color {
         return switch (sev) {
-            .Error => self.headerError,
-            .Warning => self.headerWarning,
-            .Info => self.headerInfo,
+            .@"error" => self.headerError,
+            .warning => self.headerWarning,
+            .info => self.headerInfo,
         };
     }
 };
@@ -91,10 +91,10 @@ const Charset = struct {
             .headerStart = "-->",
             .border = "|",
             .connector = "|",
-            .borderBreak = ".",
+            .borderBreak = ":",
             .noteMarker = "=",
             .primaryUnderline = "^",
-            .secondaryUnderline = "~",
+            .secondaryUnderline = "-",
         };
     }
 };
