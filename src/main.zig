@@ -35,7 +35,7 @@ pub fn main() !void {
         .message = "This is an error",
         .labels = &[_]Label{
             Label.primary(5, 8, "Primary label", 0), // FIXME: temporary assumption
-            Label.primary(24, 27, "bel", 0), // FIXME: temporary assumption
+            Label.primary(24, 27, "asd", 0), // FIXME: temporary assumption
             Label.secondary(34, 35, "Another secondary label", 0), // FIXME: temporary assumption
             // Label.primary(72, 82, "Another primary label", 0), // FIXME: temporary assumption
             // Label.secondary(153, 156, "Secondary label", 0), // FIXME: temporary assumption

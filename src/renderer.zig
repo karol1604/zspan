@@ -73,6 +73,11 @@ const Span = struct {
     end: usize,
 };
 
+const LanePlan = struct {
+    row: []const RowSegment,
+    deferredLabels: []const VisualLabel,
+};
+
 fn spansOverlap(a: Span, b: Span) bool {
     return a.start < b.end and b.start < a.end;
 }
@@ -357,9 +362,10 @@ pub const Renderer = struct {
         diagnostic: Diagnostic,
         lane: UnderlineLane,
         alloc: std.mem.Allocator,
-    ) ![]const RowSegment {
+    ) !LanePlan {
         var segments: std.ArrayList(RowSegment) = .empty;
         const canInline = laneCanInlineMessages(lane.labels.items);
+        var deferredLabels: std.ArrayList(VisualLabel) = .empty;
 
         for (lane.labels.items) |label| {
             const color = self.getLabelColor(diagnostic, label.label);
@@ -381,12 +387,136 @@ pub const Renderer = struct {
                     .text = label.label.message,
                     .color = color,
                 });
+            } else if (label.label.message.len > 0) {
+                try deferredLabels.append(alloc, label);
             }
         }
 
         std.sort.block(RowSegment, segments.items, {}, compareRowSegments);
+        // std.sort.block(VisualLabel, deferredLabels.items, {}, compareVisualLabelsByAnchorDesc);
+
+        // std.debug.print("deffered labels len: {d}\n", .{deferredLabels.items.len});
+        // for (deferredLabels.items) |label| {
+        //     std.debug.print("Adding connector for label at col {d} with message '{s}'\n", .{
+        //         label.startCol,
+        //         label.label.message,
+        //     });
+        // }
+
+        return LanePlan{
+            .row = try segments.toOwnedSlice(alloc),
+            .deferredLabels = try deferredLabels.toOwnedSlice(alloc),
+        };
+    }
+
+    fn compareVisualLabelsByAnchorDesc(_: void, a: VisualLabel, b: VisualLabel) bool {
+        if (a.anchorCol != b.anchorCol) return a.anchorCol > b.anchorCol;
+
+        const aLen = a.endCol - a.startCol;
+        const bLen = b.endCol - b.startCol;
+
+        if (aLen != bLen) return aLen > bLen;
+
+        if (a.label.style != b.label.style) {
+            return a.label.style == .Primary;
+        }
+
+        return false;
+    }
+
+    fn compareVisualLabelsByAnchorAsc(_: void, a: VisualLabel, b: VisualLabel) bool {
+        if (a.anchorCol != b.anchorCol) return a.anchorCol < b.anchorCol;
+
+        const aLen = a.endCol - a.startCol;
+        const bLen = b.endCol - b.startCol;
+
+        if (aLen != bLen) return aLen > bLen;
+
+        if (a.label.style != b.label.style) {
+            return a.label.style == .Primary;
+        }
+
+        return false;
+    }
+
+    fn planConnectorGuideRow(
+        self: *Renderer,
+        diagnostic: Diagnostic,
+        labels: []const VisualLabel,
+        alloc: std.mem.Allocator,
+    ) ![]const RowSegment {
+        var segments: std.ArrayList(RowSegment) = .empty;
+
+        var lastAnchor: ?usize = null;
+
+        for (labels) |label| {
+            if (lastAnchor != null and lastAnchor.? == label.anchorCol) {
+                continue;
+            }
+
+            lastAnchor = label.anchorCol;
+
+            try segments.append(alloc, .{
+                .kind = .Connector,
+                .startCol = label.anchorCol,
+                .width = 1,
+                .text = self.config.charset.connector,
+                .color = self.getLabelColor(diagnostic, label.label),
+            });
+        }
 
         return try segments.toOwnedSlice(alloc);
+    }
+
+    fn planConnectorMessageRows(
+        self: *Renderer,
+        diagnostic: Diagnostic,
+        labelsDesc: []const VisualLabel,
+        alloc: std.mem.Allocator,
+    ) ![]const []const RowSegment {
+        var rows: std.ArrayList([]const RowSegment) = .empty;
+
+        for (labelsDesc, 0..) |current, i| {
+            var segments: std.ArrayList(RowSegment) = .empty;
+
+            const remaining = labelsDesc[i + 1 ..];
+
+            var lastConnectorAnchor: ?usize = null;
+
+            for (remaining) |other| {
+                if (other.anchorCol >= current.anchorCol) {
+                    continue;
+                }
+
+                if (lastConnectorAnchor != null and lastConnectorAnchor.? == other.anchorCol) {
+                    continue;
+                }
+
+                lastConnectorAnchor = other.anchorCol;
+
+                try segments.append(alloc, .{
+                    .kind = .Connector,
+                    .startCol = other.anchorCol,
+                    .width = 1,
+                    .text = self.config.charset.connector,
+                    .color = self.getLabelColor(diagnostic, other.label),
+                });
+            }
+
+            try segments.append(alloc, .{
+                .kind = .Message,
+                .startCol = current.anchorCol,
+                .width = messageDisplayWidth(current.label.message),
+                .text = current.label.message,
+                .color = self.getLabelColor(diagnostic, current.label),
+            });
+
+            std.sort.block(RowSegment, segments.items, {}, compareRowSegments);
+
+            try rows.append(alloc, try segments.toOwnedSlice(alloc));
+        }
+
+        return try rows.toOwnedSlice(alloc);
     }
 
     fn planAnnotationRows(
@@ -396,11 +526,42 @@ pub const Renderer = struct {
         alloc: std.mem.Allocator,
     ) ![]const []const RowSegment {
         var rows: std.ArrayList([]const RowSegment) = .empty;
+        var deferredLabels: std.ArrayList(VisualLabel) = .empty;
 
         for (lanes) |lane| {
-            const row = try self.planLaneRow(diagnostic, lane, alloc);
-            try rows.append(alloc, row);
+            const lanePlan = try self.planLaneRow(diagnostic, lane, alloc);
+            try rows.append(alloc, lanePlan.row);
+            try deferredLabels.appendSlice(alloc, lanePlan.deferredLabels);
         }
+
+        if (deferredLabels.items.len == 0) {
+            return try rows.toOwnedSlice(alloc);
+        }
+
+        std.sort.block(VisualLabel, deferredLabels.items, {}, compareVisualLabelsByAnchorAsc);
+
+        const guideRow = try self.planConnectorGuideRow(
+            diagnostic,
+            deferredLabels.items,
+            alloc,
+        );
+
+        try rows.append(alloc, guideRow);
+
+        std.sort.block(
+            VisualLabel,
+            deferredLabels.items,
+            {},
+            compareVisualLabelsByAnchorDesc,
+        );
+
+        const messageRows = try self.planConnectorMessageRows(
+            diagnostic,
+            deferredLabels.items,
+            alloc,
+        );
+
+        try rows.appendSlice(alloc, messageRows);
 
         return try rows.toOwnedSlice(alloc);
     }
