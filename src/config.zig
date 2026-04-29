@@ -65,6 +65,7 @@ const ColorSet = struct {
 const Charset = struct {
     headerStart: []const u8,
     border: []const u8,
+    connector: []const u8,
     noteMarker: []const u8,
     primaryUnderline: []const u8,
     secondaryUnderline: []const u8,
@@ -73,13 +74,15 @@ const Charset = struct {
 
     pub fn utf8() Charset {
         return .{
-            .headerStart = "┌─",
-            .border = "│",
+            .headerStart = "┏━━━",
+            .border = "┃",
+            .connector = "│",
             // .noteMarker = "•",
-            .borderBreak = "⋮",
+            // .noteMarker = "╾",
             .noteMarker = "=",
+            .borderBreak = "┇",
             .primaryUnderline = "^",
-            .secondaryUnderline = "~",
+            .secondaryUnderline = "─",
         };
     }
 
@@ -87,6 +90,7 @@ const Charset = struct {
         return .{
             .headerStart = "-->",
             .border = "|",
+            .connector = "|",
             .borderBreak = ".",
             .noteMarker = "=",
             .primaryUnderline = "^",

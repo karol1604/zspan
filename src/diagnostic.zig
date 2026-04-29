@@ -42,12 +42,6 @@ pub const Label = struct {
     }
 };
 
-pub const LabeledLine = struct {
-    number: usize, // 1-indexed
-    range: utils.Range, // byte range
-    labels: []const Label,
-};
-
 pub const Diagnostic = struct {
     severity: Severity,
     message: []const u8,
