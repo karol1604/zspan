@@ -326,14 +326,44 @@ pub const Renderer = struct {
         source: SourceFile,
         labeledLine: LabeledLine,
         padding: usize,
+        alloc: std.mem.Allocator,
     ) !void {
+        var primaryLabels: std.ArrayList(Label) = .empty;
+        for (labeledLine.labels) |label| {
+            if (label.style == .Primary) {
+                try primaryLabels.append(alloc, label);
+            }
+        }
+        std.sort.block(Label, primaryLabels.items, {}, compareLabelsByStart);
+
         const lineRange = labeledLine.range;
         const line = source.source[lineRange.start..lineRange.end];
         try self.renderPadding(padding);
         try self.setColor(self.config.colors.border);
         try self.writer.print("{d} {s} ", .{ labeledLine.number, self.config.charset.border });
         try self.resetColor();
-        try self.writer.print("{s}\n", .{line});
+
+        if (primaryLabels.items.len == 0) {
+            try self.writer.print("{s}\n", .{line});
+            return;
+        }
+
+        try self.writer.print("{s}", .{source.source[lineRange.start..primaryLabels.items[0].start]});
+        var currentCol = primaryLabels.items[0].start;
+        for (primaryLabels.items, 0..) |label, i| {
+            try self.setColor(self.config.colors.primaryLabelError);
+            try self.writer.print("{s}", .{source.source[label.start..label.end]});
+            try self.resetColor();
+
+            currentCol = label.end;
+
+            const nextStart = if (i + 1 < primaryLabels.items.len) primaryLabels.items[i + 1].start else lineRange.end;
+            if (currentCol < nextStart) {
+                try self.writer.print("{s}", .{source.source[currentCol..nextStart]});
+                currentCol = nextStart;
+            }
+        }
+        try self.writer.print("\n", .{});
     }
 
     fn buildVisualLabels(
@@ -604,7 +634,12 @@ pub const Renderer = struct {
         padding: usize,
         alloc: std.mem.Allocator,
     ) !void {
-        try self.renderSourceLine(source, labeledLine, padding - utils.digitCount(labeledLine.number) - 1);
+        try self.renderSourceLine(
+            source,
+            labeledLine,
+            padding - utils.digitCount(labeledLine.number) - 1,
+            alloc,
+        );
 
         const visualLabels = try self.buildVisualLabels(source, labeledLine, alloc);
         std.sort.block(VisualLabel, visualLabels, {}, compareVisualLabels);
