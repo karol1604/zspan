@@ -596,10 +596,15 @@ pub const Renderer = struct {
                 });
             }
 
+            const messageStartCol = if (label.fragmentKind == .MultiEnd)
+                label.endCol + 2
+            else
+                label.endCol + 1;
+
             if (canInline and label.label.message.len > 0) {
                 try segments.append(alloc, .{
                     .kind = .Message,
-                    .startCol = label.endCol + 1,
+                    .startCol = messageStartCol,
                     .width = messageDisplayWidth(label.label.message),
                     .text = label.label.message,
                     .color = color,
