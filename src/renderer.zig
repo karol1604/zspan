@@ -8,10 +8,26 @@ const sf = @import("sourcefile.zig");
 const SourceFile = sf.SourceFile;
 const utils = @import("utils.zig");
 
+const LabelFragmentKind = enum {
+    SingleLine,
+    MultiStart,
+    MultiMiddle,
+    MultiEnd,
+};
+const LabelFragment = struct {
+    label: Label,
+    kind: LabelFragmentKind,
+    start: usize, // byte offset of the start of this fragment
+    end: usize, // byte offset of the end of this fragment
+    // anchorCol: usize, // column where connector will be rendered for multi-line labels
+    showMessage: bool,
+};
+
 const LabeledLine = struct {
     number: usize, // 1-indexed
     range: utils.Range, // byte range
-    labels: []const Label, // labels that apply to this line
+    // labels: []const Label, // labels that apply to this line
+    fragments: []const LabelFragment, // fragments of labels that apply to this line
 };
 
 const LabeledFile = struct {
@@ -22,7 +38,7 @@ const LabeledFile = struct {
 const LabeledLineBuilder = struct {
     number: usize,
     range: utils.Range,
-    labels: std.ArrayList(Label),
+    fragments: std.ArrayList(LabelFragment),
 };
 
 const LabeledFileBuilder = struct {
@@ -150,14 +166,47 @@ fn findOrCreateLabeledLine(
     try lines.append(alloc, .{
         .number = number,
         .range = range,
-        .labels = .empty,
+        .fragments = .empty,
     });
     return &lines.items[lines.items.len - 1];
 }
 
-fn compareLabelsByStart(_: void, a: Label, b: Label) bool {
+fn compareFragmentsByStart(_: void, a: LabelFragment, b: LabelFragment) bool {
     if (a.start != b.start) return a.start < b.start;
     return a.end > b.end;
+}
+
+fn makeFragment(
+    label: Label,
+    effectiveEnd: usize,
+    lineRange: utils.Range,
+    lineIdx: usize,
+    startLineIdx: usize,
+    endLineIdx: usize,
+) LabelFragment {
+    const isSingleLine = startLineIdx == endLineIdx;
+    const isStart = lineIdx == startLineIdx;
+    const isEnd = lineIdx == endLineIdx;
+
+    const kind: LabelFragmentKind = if (isSingleLine)
+        .SingleLine
+    else if (isStart)
+        .MultiStart
+    else if (isEnd)
+        .MultiEnd
+    else
+        .MultiMiddle;
+
+    const fragmentStart = if (isStart) label.start else lineRange.start;
+    const fragmentEnd = if (isEnd) effectiveEnd else lineRange.end;
+
+    return LabelFragment{
+        .label = label,
+        .kind = kind,
+        .start = fragmentStart,
+        .end = fragmentEnd,
+        .showMessage = isEnd, // only show message on the last fragment of a multi-line label
+    };
 }
 
 fn buildLabeledFiles(
@@ -169,12 +218,28 @@ fn buildLabeledFiles(
 
     for (labels) |label| {
         const source = sources[label.fileId];
-        const lineNumber = (try source.lineCol(label.start)).line;
-        const lineRange = try source.lineRange(label.start);
+        // ensure at least 1 char is highlighted even for zero-length labels
+        const effectiveEnd = if (label.end > label.start) label.end else label.start + 1;
+        const startLineIdx = try source.lineIndexAt(label.start);
+        const endLineIdx = try source.lineIndexAt(effectiveEnd - 1);
 
         const fileBuilder = try findOrCreateLabeledFile(&fileBuilders, label.fileId, alloc);
-        const lineBuilder = try findOrCreateLabeledLine(&fileBuilder.lines, lineNumber, lineRange, alloc);
-        try lineBuilder.labels.append(alloc, label);
+
+        var lineIdx: usize = startLineIdx;
+        while (lineIdx <= endLineIdx) : (lineIdx += 1) {
+            const lineRange = try source.lineRangeAtIndex(lineIdx);
+            const lineNumber = lineIdx + 1;
+
+            const fragment = makeFragment(label, effectiveEnd, lineRange, lineIdx, startLineIdx, endLineIdx);
+
+            const lineBuilder = try findOrCreateLabeledLine(
+                &fileBuilder.lines,
+                lineNumber,
+                lineRange,
+                alloc,
+            );
+            try lineBuilder.fragments.append(alloc, fragment);
+        }
     }
 
     var files: std.ArrayList(LabeledFile) = .empty;
@@ -182,7 +247,7 @@ fn buildLabeledFiles(
         std.sort.block(LabeledLineBuilder, fileBuilder.lines.items, {}, compareLabeledLines);
 
         for (fileBuilder.lines.items) |*lineBuilder| {
-            std.sort.block(Label, lineBuilder.labels.items, {}, compareLabelsByStart);
+            std.sort.block(LabelFragment, lineBuilder.fragments.items, {}, compareFragmentsByStart);
         }
 
         var lines: std.ArrayList(LabeledLine) = .empty;
@@ -190,7 +255,8 @@ fn buildLabeledFiles(
             try lines.append(alloc, .{
                 .number = lineBuilder.number,
                 .range = lineBuilder.range,
-                .labels = try lineBuilder.labels.toOwnedSlice(alloc),
+                // .labels = try lineBuilder.labels.toOwnedSlice(alloc),
+                .fragments = try lineBuilder.fragments.toOwnedSlice(alloc),
             });
         }
 
@@ -232,7 +298,8 @@ pub const Renderer = struct {
         for (labeledFiles) |labeledFile| {
             const source = sourceFiles[labeledFile.fileId];
             const firstLine = labeledFile.lines[0];
-            const firstLabel = firstLine.labels[0];
+            // NOTE: here
+            const firstLabel = firstLine.fragments[0].label;
             const firstLineCol = try source.lineCol(firstLabel.start);
 
             try self.renderFileHeader(source.name, firstLineCol, padding);
@@ -328,13 +395,14 @@ pub const Renderer = struct {
         padding: usize,
         alloc: std.mem.Allocator,
     ) !void {
-        var primaryLabels: std.ArrayList(Label) = .empty;
-        for (labeledLine.labels) |label| {
-            if (label.style == .Primary) {
-                try primaryLabels.append(alloc, label);
+        var primaryFragments: std.ArrayList(LabelFragment) = .empty;
+
+        for (labeledLine.fragments) |fragment| {
+            if (fragment.label.style == .Primary) {
+                try primaryFragments.append(alloc, fragment);
             }
         }
-        std.sort.block(Label, primaryLabels.items, {}, compareLabelsByStart);
+        std.sort.block(LabelFragment, primaryFragments.items, {}, compareFragmentsByStart);
 
         const lineRange = labeledLine.range;
         const line = source.source[lineRange.start..lineRange.end];
@@ -343,24 +411,29 @@ pub const Renderer = struct {
         try self.writer.print("{d} {s} ", .{ labeledLine.number, self.config.charset.border });
         try self.resetColor();
 
-        if (primaryLabels.items.len == 0) {
+        if (primaryFragments.items.len == 0) {
             try self.writer.print("{s}\n", .{line});
             return;
         }
 
-        try self.writer.print("{s}", .{source.source[lineRange.start..primaryLabels.items[0].start]});
-        var currentCol = primaryLabels.items[0].start;
-        for (primaryLabels.items, 0..) |label, i| {
+        try self.writer.print("{s}", .{source.source[lineRange.start..primaryFragments.items[0].start]});
+
+        var currentByte = primaryFragments.items[0].start;
+        for (primaryFragments.items, 0..) |fragment, i| {
             try self.setColor(self.config.colors.primaryLabelError);
-            try self.writer.print("{s}", .{source.source[label.start..label.end]});
+            try self.writer.print("{s}", .{source.source[fragment.start..fragment.end]});
             try self.resetColor();
 
-            currentCol = label.end;
+            currentByte = fragment.end;
 
-            const nextStart = if (i + 1 < primaryLabels.items.len) primaryLabels.items[i + 1].start else lineRange.end;
-            if (currentCol < nextStart) {
-                try self.writer.print("{s}", .{source.source[currentCol..nextStart]});
-                currentCol = nextStart;
+            const nextStart = if (i + 1 < primaryFragments.items.len)
+                primaryFragments.items[i + 1].start
+            else
+                lineRange.end;
+
+            if (currentByte < nextStart) {
+                try self.writer.print("{s}", .{source.source[currentByte..nextStart]});
+                currentByte = nextStart;
             }
         }
         try self.writer.print("\n", .{});
@@ -374,13 +447,13 @@ pub const Renderer = struct {
     ) ![]VisualLabel {
         var visualLabels: std.ArrayList(VisualLabel) = .empty;
 
-        for (labeledLine.labels) |label| {
-            const startCol = sf.displayCol(source.source, labeledLine.range.start, label.start);
-            const width = @max(1, sf.displayWidth(source.source, label.start, label.end));
+        for (labeledLine.fragments) |fragment| {
+            const startCol = sf.displayCol(source.source, labeledLine.range.start, fragment.start);
+            const width = @max(1, sf.displayWidth(source.source, fragment.start, fragment.end));
             const endCol = startCol + width;
 
             const vl = VisualLabel{
-                .label = label,
+                .label = fragment.label,
                 .startCol = startCol,
                 .endCol = endCol,
                 .width = width,

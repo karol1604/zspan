@@ -91,4 +91,22 @@ pub const SourceFile = struct {
         const col = displayCol(self.source, ls, byteOffset);
         return LineCol{ .line = lineIdx + 1, .col = col + 1 };
     }
+
+    pub fn lineIndexAt(self: *const SourceFile, offset: usize) !usize {
+        const lineIdx = self.lineIndex(offset);
+        if (lineIdx >= self.lineStarts.len) {
+            return error.ByteOffsetOutOfRange;
+        }
+        return lineIdx;
+    }
+
+    pub fn lineRangeAtIndex(self: *const SourceFile, lineIdx: usize) !Range {
+        if (lineIdx >= self.lineStarts.len) {
+            return error.LineIndexOutOfRange;
+        }
+        const start = self.lineStarts[lineIdx];
+        const nextLineStart = if (lineIdx + 1 < self.lineStarts.len) self.lineStarts[lineIdx + 1] else self.source.len;
+        const end = nextLineStart - 1;
+        return Range{ .start = start, .end = end };
+    }
 };
