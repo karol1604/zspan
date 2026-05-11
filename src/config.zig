@@ -70,6 +70,11 @@ const Charset = struct {
     primaryUnderline: []const u8,
     secondaryUnderline: []const u8,
     borderBreak: []const u8,
+    multiTopLeft: []const u8,
+    multiLeft: []const u8,
+    multiBottomLeft: []const u8,
+    multiHorizontal: []const u8,
+    multiEndMarker: []const u8,
     // ... and other fields
 
     pub fn utf8() Charset {
@@ -83,6 +88,11 @@ const Charset = struct {
             .borderBreak = "┇",
             .primaryUnderline = "^",
             .secondaryUnderline = "─",
+            .multiTopLeft = "╭",
+            .multiLeft = "│",
+            .multiBottomLeft = "╰",
+            .multiHorizontal = "─",
+            .multiEndMarker = "'",
         };
     }
 
@@ -94,7 +104,12 @@ const Charset = struct {
             .borderBreak = ":",
             .noteMarker = "=",
             .primaryUnderline = "^",
-            .secondaryUnderline = "-",
+            .secondaryUnderline = "─",
+            .multiTopLeft = "/",
+            .multiLeft = "|",
+            .multiBottomLeft = "\\",
+            .multiHorizontal = "_",
+            .multiEndMarker = "'",
         };
     }
 };

@@ -53,6 +53,7 @@ const VisualLabel = struct {
     width: usize, // at least 1
     anchorCol: usize, // col where connector will be renderer
     lane: usize = 0,
+    fragmentKind: LabelFragmentKind,
 };
 
 const UnderlineLane = struct {
@@ -388,6 +389,19 @@ pub const Renderer = struct {
         try self.resetColor();
     }
 
+    fn multilineMarkerForLine(self: *const Renderer, fragments: []const LabelFragment) ?[]const u8 {
+        for (fragments) |fragment| {
+            switch (fragment.kind) {
+                .MultiStart => return self.config.charset.multiTopLeft,
+                .MultiMiddle => return self.config.charset.multiLeft,
+                // .MultiEnd => return self.config.charset.multiBottomLeft,
+                .MultiEnd => return self.config.charset.multiLeft,
+                else => {},
+            }
+        }
+        return null;
+    }
+
     fn renderSourceLine(
         self: *Renderer,
         source: SourceFile,
@@ -410,6 +424,14 @@ pub const Renderer = struct {
         try self.setColor(self.config.colors.border);
         try self.writer.print("{d} {s} ", .{ labeledLine.number, self.config.charset.border });
         try self.resetColor();
+
+        const multilineMarker = self.multilineMarkerForLine(labeledLine.fragments);
+
+        if (multilineMarker) |marker| {
+            try self.setColor(self.config.colors.primaryLabelError);
+            try self.writer.print("{s} ", .{marker});
+            try self.resetColor();
+        }
 
         if (primaryFragments.items.len == 0) {
             try self.writer.print("{s}\n", .{line});
@@ -440,24 +462,34 @@ pub const Renderer = struct {
     }
 
     fn buildVisualLabels(
-        _: *Renderer,
+        self: *Renderer,
         source: SourceFile,
         labeledLine: LabeledLine,
         alloc: std.mem.Allocator,
     ) ![]VisualLabel {
         var visualLabels: std.ArrayList(VisualLabel) = .empty;
 
+        // account for multiline marker taking up space
+        const multilineMarker = self.multilineMarkerForLine(labeledLine.fragments);
+        const sourceColOffset: usize = if (multilineMarker != null) 2 else 0;
+
         for (labeledLine.fragments) |fragment| {
             const startCol = sf.displayCol(source.source, labeledLine.range.start, fragment.start);
             const width = @max(1, sf.displayWidth(source.source, fragment.start, fragment.end));
             const endCol = startCol + width;
 
+            var label = fragment.label;
+            if (!fragment.showMessage) {
+                label.message = "";
+            }
+
             const vl = VisualLabel{
-                .label = fragment.label,
-                .startCol = startCol,
-                .endCol = endCol,
+                .label = label,
+                .startCol = startCol + sourceColOffset,
+                .endCol = endCol + sourceColOffset,
                 .width = width,
-                .anchorCol = startCol,
+                .anchorCol = startCol + sourceColOffset,
+                .fragmentKind = fragment.kind,
             };
             try visualLabels.append(alloc, vl);
         }
@@ -479,13 +511,41 @@ pub const Renderer = struct {
             const color = self.getLabelColor(diagnostic, label.label);
             const underlineChar = self.getLabelUnderline(label.label);
 
-            try segments.append(alloc, .{
-                .kind = .Underline,
-                .startCol = label.startCol,
-                .width = label.width,
-                .text = underlineChar,
-                .color = color,
-            });
+            if (label.fragmentKind == .SingleLine) {
+                try segments.append(alloc, .{
+                    .kind = .Underline,
+                    .startCol = label.startCol,
+                    .width = label.width,
+                    .text = underlineChar,
+                    .color = color,
+                });
+            }
+
+            if (label.fragmentKind == .MultiEnd) {
+                try segments.append(alloc, .{
+                    .kind = .Underline,
+                    .startCol = 0,
+                    .width = 1,
+                    .text = self.config.charset.multiBottomLeft,
+                    .color = color,
+                });
+
+                try segments.append(alloc, .{
+                    .kind = .Underline,
+                    .startCol = 1,
+                    .width = label.endCol - 1,
+                    .text = self.config.charset.multiHorizontal,
+                    .color = color,
+                });
+
+                try segments.append(alloc, .{
+                    .kind = .Underline,
+                    .startCol = label.endCol,
+                    .width = 1,
+                    .text = self.config.charset.multiEndMarker,
+                    .color = color,
+                });
+            }
 
             if (canInline and label.label.message.len > 0) {
                 try segments.append(alloc, .{
@@ -638,7 +698,8 @@ pub const Renderer = struct {
 
         for (lanes) |lane| {
             const lanePlan = try self.planLaneRow(diagnostic, lane, alloc);
-            try rows.append(alloc, lanePlan.row);
+            if (lanePlan.row.len > 0)
+                try rows.append(alloc, lanePlan.row);
             try deferredLabels.appendSlice(alloc, lanePlan.deferredLabels);
         }
 
