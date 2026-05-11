@@ -37,7 +37,7 @@ pub fn main(init: std.process.Init) !void {
             // Label.primary(5, 8, "Primary label", 0), // FIXME: temporary assumption
             // Label.secondary(31, 35, "expected type `bool`", 0), // FIXME: temporary assumption
             // Label.primary(38, 41, "found `int`", 0), // FIXME: temporary assumption
-            Label.primary(43, 70, "Another primary label", 0), // FIXME: temporary assumption
+            Label.primary(47, 70, "Another primary label", 0), // FIXME: temporary assumption
             Label.secondary(158, 161, "Secondary label", 0), // FIXME: temporary assumption
             // Label.primary(161, 164, "Secondary label", 0), // FIXME: temporary assumption
         },

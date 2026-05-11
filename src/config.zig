@@ -74,7 +74,7 @@ const Charset = struct {
     multiLeft: []const u8,
     multiBottomLeft: []const u8,
     multiHorizontal: []const u8,
-    multiEndMarker: []const u8,
+    multiMarker: []const u8,
     // ... and other fields
 
     pub fn utf8() Charset {
@@ -92,7 +92,7 @@ const Charset = struct {
             .multiLeft = "│",
             .multiBottomLeft = "╰",
             .multiHorizontal = "─",
-            .multiEndMarker = "'",
+            .multiMarker = "'",
         };
     }
 
@@ -109,7 +109,7 @@ const Charset = struct {
             .multiLeft = "|",
             .multiBottomLeft = "\\",
             .multiHorizontal = "_",
-            .multiEndMarker = "'",
+            .multiMarker = "'",
         };
     }
 };
