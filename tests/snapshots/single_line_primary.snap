@@ -1,0 +1,5 @@
+error: mismatched type
+  ┏━━━[ single.mp:1:20 ]
+  ┃
+1 ┃ let answer: bool = 42
+  ┃                    ^^ expected bool

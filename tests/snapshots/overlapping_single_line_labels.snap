@@ -1,0 +1,9 @@
+error: invalid call inputs
+  ┏━━━[ overlap.mp:1:13 ]
+  ┃
+1 ┃ let total = add(lhs, rhs)
+  ┃             ^^^^^^^^^^^^^ call result
+  ┃                 ───  ───
+  ┃                 │    │
+  ┃                 │    right input
+  ┃                 left input

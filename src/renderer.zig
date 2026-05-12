@@ -445,7 +445,11 @@ pub const Renderer = struct {
         const multilineMarker = self.multilineMarkerForLine(source, labeledLine);
 
         if (multilineMarker) |marker| {
-            try self.setColor(self.config.colors.primaryLabelError);
+            const color = switch (primaryFragments.items.len) {
+                0 => self.config.colors.border,
+                else => self.config.colors.primaryLabelError,
+            };
+            try self.setColor(color);
             try self.writer.print("{s} ", .{marker});
             try self.resetColor();
         }
@@ -541,10 +545,10 @@ pub const Renderer = struct {
             }
 
             if (label.fragmentKind == .MultiStart and label.sourceStartCol > 0) {
-                std.debug.print("Adding multi-line start underline for label at col {d} with message '{s}'\n", .{
-                    label.startCol,
-                    label.label.message,
-                });
+                // std.debug.print("Adding multi-line start underline for label at col {d} with message '{s}'\n", .{
+                //     label.startCol,
+                //     label.label.message,
+                // });
                 try segments.append(alloc, .{
                     .kind = .Underline,
                     .startCol = 0,
@@ -861,14 +865,14 @@ pub const Renderer = struct {
         underline: []const u8,
         color: std.io.tty.Color,
     ) !void {
-        std.debug.print("Rendering underline from col {d} to col {d} with width {d}. currentcol = {d}\n", .{
-            startCol,
-            startCol + width,
-            width,
-            currentCol.*,
-        });
+        // std.debug.print("Rendering underline from col {d} to col {d} with width {d}. currentcol = {d}\n", .{
+        //     startCol,
+        //     startCol + width,
+        //     width,
+        //     currentCol.*,
+        // });
         try self.renderSpacesTo(currentCol, startCol);
-        std.debug.print("After rendering spaces, currentcol = {d}\n", .{currentCol.*});
+        // std.debug.print("After rendering spaces, currentcol = {d}\n", .{currentCol.*});
 
         try self.setColor(color);
         for (0..width) |_| {

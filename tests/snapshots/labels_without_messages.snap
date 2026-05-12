@@ -1,0 +1,5 @@
+info: message-less labels
+  ┏━━━[ empty_messages.mp:1:8 ]
+  ┃
+1 ┃ return lhs + rhs
+  ┃        ^^^   ───

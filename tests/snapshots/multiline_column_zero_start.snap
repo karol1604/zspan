@@ -1,0 +1,8 @@
+error: column-zero multiline start
+  ┏━━━[ column_zero.mp:1:1 ]
+  ┃
+1 ┃ ╭ alpha(
+2 ┃ │     beta,
+3 ┃ │     gamma,
+4 ┃ │ )
+  ┃ ╰──' full call

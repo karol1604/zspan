@@ -1,0 +1,5 @@
+error: missing expression
+  ┏━━━[ zero_width.mp:1:13 ]
+  ┃
+1 ┃ let value = ;
+  ┃             ^ expected expression

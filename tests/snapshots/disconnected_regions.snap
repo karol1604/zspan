@@ -1,0 +1,8 @@
+warning: multiple interesting regions
+  ┏━━━[ regions.mp:1:13 ]
+  ┃
+1 ┃ let first = bad();
+  ┃             ^^^^^ first failure
+  ┇
+4 ┃ let last = worse()
+  ┃            ─────── later context

@@ -1,0 +1,9 @@
+error: expression spans multiple lines
+  ┏━━━[ multiline.mp:2:17 ]
+  ┃
+2 ┃     let value = compute(
+  ┃ ╭───────────────'
+3 ┃ │         left,
+4 ┃ │         right,
+5 ┃ │     );
+  ┃ ╰─────' multi-line expression

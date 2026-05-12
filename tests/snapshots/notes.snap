@@ -1,0 +1,8 @@
+warning: unresolved identifier
+  ┏━━━[ notes.mp:1:15 ]
+  ┃
+1 ┃ const value = impossible
+  ┃               ^^^^^^^^^^ unknown symbol
+  ┃
+  = names are resolved after parsing
+  = check the surrounding scope
