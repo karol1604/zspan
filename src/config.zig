@@ -79,7 +79,7 @@ const Charset = struct {
 
     pub fn utf8() Charset {
         return .{
-            .headerStart = "┏━━━",
+            .headerStart = "┏━━",
             .border = "┃",
             .connector = "│",
             // .noteMarker = "•",

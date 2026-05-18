@@ -422,6 +422,7 @@ pub const Renderer = struct {
     fn renderSourceLine(
         self: *Renderer,
         source: SourceFile,
+        diagnostic: Diagnostic,
         labeledLine: LabeledLine,
         padding: usize,
         alloc: std.mem.Allocator,
@@ -463,7 +464,8 @@ pub const Renderer = struct {
 
         var currentByte = primaryFragments.items[0].start;
         for (primaryFragments.items, 0..) |fragment, i| {
-            try self.setColor(self.config.colors.primaryLabelError);
+            const col = self.getLabelColor(diagnostic, fragment.label);
+            try self.setColor(col);
             try self.writer.print("{s}", .{source.source[fragment.start..fragment.end]});
             try self.resetColor();
 
@@ -828,6 +830,7 @@ pub const Renderer = struct {
     ) !void {
         try self.renderSourceLine(
             source,
+            diagnostic,
             labeledLine,
             padding - utils.digitCount(labeledLine.number) - 1,
             alloc,
