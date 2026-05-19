@@ -94,7 +94,8 @@ const Charset = struct {
             .multiLeft = "│",
             .multiBottomLeft = "╰",
             .multiHorizontal = "─",
-            .multiMarker = "┘",
+            // .multiMarker = "┘",
+            .multiMarker = "╯",
         };
     }
 
