@@ -79,20 +79,22 @@ const Charset = struct {
 
     pub fn utf8() Charset {
         return .{
-            .headerStart = "┏━━",
+            // .headerStart = "┏━━",
+            .headerStart = "┏━▶",
             .border = "┃",
             .connector = "│",
             // .noteMarker = "•",
             // .noteMarker = "╾",
             .noteMarker = "=",
             .borderBreak = "┇",
+            // .borderBreak = "‡",
             .primaryUnderline = "^",
             .secondaryUnderline = "─",
             .multiTopLeft = "╭",
             .multiLeft = "│",
             .multiBottomLeft = "╰",
             .multiHorizontal = "─",
-            .multiMarker = "'",
+            .multiMarker = "┘",
         };
     }
 
